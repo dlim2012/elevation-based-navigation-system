@@ -1,0 +1,12 @@
+osm2pgsql version 1.8.1
+PostgreSQL version 15.0
+PostGIS version 3.3
+libpgxx version 6.4.5
+
+HTTPRequest.hpp source: https://github.com/elnormous/HTTPRequest
+
+crow version ---
+
+open-elevation
+    - https://open-elevation.com/
+    - https://github.com/Jorl17/open-elevation/tree/master/docs
