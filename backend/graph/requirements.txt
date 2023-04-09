@@ -1,0 +1,3 @@
+boost 1.81.0
+crow v1.0+5 Security Patch
+libpqxx 6.4.5
