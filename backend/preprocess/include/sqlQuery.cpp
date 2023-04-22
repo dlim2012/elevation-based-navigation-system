@@ -14,6 +14,27 @@ void timedExecution(connection& C, string query, bool skipFail){
         w.exec(query);
         w.commit();
     } catch(const std::exception &e) {
+        cout << "failed: " << e.what();
+        if (!skipFail) {
+            throw e;
+        }
+        cout << "(skipping)" << endl;
+    };
+    auto t1 = chrono::high_resolution_clock::now();
+    auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+    cout << "time: " << t << " seconds" << endl << endl;
+}
+
+
+int timedExecutionReturnsInt(connection& C, string query, bool skipFail){
+    auto t0 = chrono::high_resolution_clock::now();
+    cout << query << endl;
+    work w(C);
+    result r;
+    try {
+        r = w.exec(query);
+        w.commit();
+    } catch(const std::exception &e) {
         cout << "failed: " << e.what() << endl;
         if (!skipFail)
             throw e;
@@ -21,28 +42,53 @@ void timedExecution(connection& C, string query, bool skipFail){
     auto t1 = chrono::high_resolution_clock::now();
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
     cout << "time: " << t << " seconds" << endl << endl;
+    return stoi(r[0][0].c_str());
 }
 
-int getNumberOfRows(connection& C, string tableName){
+long getNumberOfRows(connection& C, long lastID, string tableName){
     auto t0 = chrono::high_resolution_clock::now();
-    const string numRowsQuery = "SELECT count(*) FROM " + tableName + ";";
-    cout << numRowsQuery << endl;
     work queryCount(C);
+    string numRowsQuery;
+    if (lastID > 0){
+        numRowsQuery = "SELECT count(*) FROM " + tableName + " WHERE id > " + queryCount.esc(to_string(lastID)) + ";";
+    } else {
+        numRowsQuery = "SELECT count(*) FROM " + tableName + ";";
+    }
+    cout << numRowsQuery << endl;
     result r = queryCount.exec(numRowsQuery);
-    int numRows = stoi(r[0][0].c_str());
+    int numRows = stol(r[0][0].c_str());
     auto t1 = chrono::high_resolution_clock::now();
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
     cout << "time: " << t << " seconds" << endl << endl;
     return numRows;
 }
 
-int getNumberOfPoints(connection& C, string tableName){
+long getNumberOfPoints(connection& C, long lastID, string tableName){
     auto t0 = chrono::high_resolution_clock::now();
-    const string numRowsQuery = "SELECT sum(ST_NPOINTS(geom)) FROM " + tableName + ";";
-    cout << numRowsQuery << endl;
     work queryCount(C);
+    string numRowsQuery;
+    if (lastID > 0){
+        numRowsQuery = "SELECT COALESCE(sum(ST_NPOINTS(geom)), 0) FROM " + tableName + " WHERE id > " + queryCount.esc(to_string(lastID)) + ";";
+    } else {
+        numRowsQuery = "SELECT COALESCE(sum(ST_NPOINTS(geom)), 0) FROM " + tableName + ";";
+    }
+    cout << numRowsQuery << endl;
     result r = queryCount.exec(numRowsQuery);
-    int numRows = stoi(r[0][0].c_str());
+    cout << r[0][0].c_str() << endl;
+    int numRows = stol(r[0][0].c_str());
+    auto t1 = chrono::high_resolution_clock::now();
+    auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+    cout << "time: " << t << " seconds" << endl << endl;
+    return numRows;
+}
+
+long getLastId(connection& C, string tableName){
+    auto t0 = chrono::high_resolution_clock::now();
+    work queryCount(C);
+    string numRowsQuery = "SELECT COALESCE(MAX(id), -1) FROM " + tableName + ";";
+    cout << numRowsQuery << endl;
+    result r = queryCount.exec(numRowsQuery);
+    long numRows = stol(r[0][0].c_str());
     auto t1 = chrono::high_resolution_clock::now();
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
     cout << "time: " << t << " seconds" << endl << endl;

@@ -10,7 +10,7 @@ public:
     class Edge {
     public:
         long id;
-        double length;
+        int length; // saving in the unit of centimeters
         int elevation;
         Node *u;
         Node *v;
@@ -20,16 +20,16 @@ public:
         Edge(Node *node, bool reversed);
 
         Edge(long id, Node *u, Node *v,
-             double length,
+             int length,
              int elevation);
 
-        double getLength();
+        int getLength();
 
-        double getElevation();
+        int getElevation();
 
-        static double getLength(Edge *edge);
+        static int getLength(Edge *edge);
 
-        static double getElevation(Edge *edge);
+        static int getElevation(Edge *edge);
 
     };
 
@@ -52,8 +52,8 @@ public:
     bool operator==(const Node *node2) const;
 };
 
-double distance(Node *node1, Node *node2);
+int distance(Node *node1, Node *node2);
 
-double distance(Node *node1, pair<double, double> &p);
+int distance(Node *node1, pair<double, double> &p);
 
-double distance(double lon1, double lon2, double lat1, double lat2);
+int distance(double lon1, double lon2, double lat1, double lat2);

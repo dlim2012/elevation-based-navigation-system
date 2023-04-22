@@ -38,46 +38,56 @@ function clean_tags(tags)
 end
 
 -- highway types to save
-local highway_types = {
-    'motorway',
-    'motorway_link',
-    'trunk',
-    'trunk_link',
-    'primary',
-    'primary_link',
-    'secondary',
-    'secondary_link',
-    'tertiary',
-    'tertiary_link',
-    'unclassified',
-    'residential',
-    'track',
-    'service',
-}
+-- local highway_types = {
+--     'motorway',
+--     'motorway_link',
+--     'trunk',
+--     'trunk_link',
+--     'primary',
+--     'primary_link',
+--     'secondary',
+--     'secondary_link',
+--     'tertiary',
+--     'tertiary_link',
+--     'unclassified',
+--     'residential',
+--     'track',
+--     'service',
+--
+--     'footway',
+--     'path'
+--     'steps',
+--     'pedestrian',
+--     'living_street',
+--     'track',
+--     'service',
+--     'cycleway',
+--     'road'
+-- }
 
 -- Prepare table "types" for quick checking of highway types
-local types = {}
-for _, k in ipairs(highway_types) do
-    types[k] = 1
-end
+-- local types = {}
+-- for _, k in ipairs(highway_types) do
+--     types[k] = 1
+-- end
 
 
 -- Process "Ways"
 function osm2pgsql.process_way(object)
-    -- We are only interested in highways
-    if not object.tags.highway then
-        return
-    end
+--     -- We are only interested in highways
+--     if not object.tags.highway then
+--         return
+--     end
 
     local row = {
-        type = object.tags.highway,
+        type = object.tags.highway or '',
         oneway = object.tags.oneway or 0,
         nodes = '{' .. table.concat(object.nodes, ',') .. '}',
         geom = object:as_linestring(),
         tags = object.tags
     }
 
---     -- If there is any data from parent relations, add it in
+    -- If there is any data from parent relations, add it in
     local d = w2r[object.id]
     if d then
         table.sort(d)

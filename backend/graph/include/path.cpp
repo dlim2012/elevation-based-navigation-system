@@ -7,7 +7,7 @@
 using namespace std;
 
 
-PathEdges::PathEdge::PathEdge(Node::Edge *edge, double length, int elevation) {
+PathEdges::PathEdge::PathEdge(Node::Edge *edge, int length, int elevation) {
     this->edge = edge;
     this->length = length;
     this->elevation = elevation;
@@ -15,43 +15,65 @@ PathEdges::PathEdge::PathEdge(Node::Edge *edge, double length, int elevation) {
 
 PathEdges::PathEdges(Node* start) {
     this->start = start;
-    this->length = 0.0;
-    this->elevation = 0.0;
+    this->end = start;
+    this->length = 0;
+    this->elevation = 0;
 }
 
 PathEdges::PathEdges(Node* start, vector<Node::Edge *>& edges) {
     this->start = start;
-    this->length = 0.0;
-    this->elevation = 0.0;
+    if (edges.empty()){
+        this->end = start;
+    } else {
+        this->end = edges.back()->v;
+    }
+    this->length = 0;
+    this->elevation = 0;
     for (Node::Edge *edge: edges) {
         this->addEdge(edge);
     }
 }
 
-PathEdges::PathEdges(Node* start, vector<PathEdge *> &pathEdges, size_t index) {
+PathEdges::PathEdges(Node* start, vector<PathEdge *> &pathEdges, int index) {
     this->start = start;
-    this->pathEdges = vector<PathEdge*>(pathEdges.begin(), pathEdges.begin() + min(pathEdges.size(), index));
+    this->pathEdges = vector<PathEdge*>(pathEdges.begin(), pathEdges.begin() + min((int) pathEdges.size(), index));
+    this->end = this->pathEdges.empty() ? start : this->pathEdges.back()->edge->v;
 
     if (this->pathEdges.empty()) {
-        this->length = 0.0;
-        this->elevation = 0.0;
+        this->length = 0;
+        this->elevation = 0;
     } else {
         this->length = this->pathEdges.back()->length;
         this->elevation = this->pathEdges.back()->elevation;
     }
 }
 
+PathEdges::PathEdges(Path* path){
+    this->start = path->getStart();
+    for (Node::Edge* edge: path->edges){
+        this->addEdge(edge);
+    }
+}
+
 void PathEdges::addEdge(Node::Edge *edge) {
+    if (edge->u != end){
+        throw runtime_error("Start of edge does not match the end of path edges.");
+    }
     this->length += edge->length;
     this->elevation += edge->elevation;
     this->pathEdges.push_back(new PathEdge(edge, this->length, this->elevation));
+    this->end = edge->v;
+}
+
+bool PathEdges::empty() const{
+    return this->pathEdges.empty();
 }
 
 int PathEdges::size() const{
     return this->pathEdges.size();
 }
 
-double PathEdges::getLength() const{
+int PathEdges::getLength() const{
     return this->length;
 }
 
@@ -64,10 +86,7 @@ Node* PathEdges::getStart(){
 }
 
 Node* PathEdges::getEnd(){
-    if (this->pathEdges.empty()){
-        return this->start;
-    }
-    return this->pathEdges.back()->edge->v;
+    return this->end;
 }
 
 PathEdges::PathEdge* PathEdges::at(size_t index){
@@ -77,17 +96,27 @@ PathEdges::PathEdge* PathEdges::at(size_t index){
     return this->pathEdges.at(index);
 }
 
+Node::Edge* PathEdges::firstEdge(){
+    if (this->pathEdges.empty())
+        return nullptr;
+    return this->pathEdges.front()->edge;
+}
+
 Node::Edge* PathEdges::lastEdge(){
     if (this->pathEdges.empty())
         return nullptr;
     return this->pathEdges.back()->edge;
 }
 
-PathEdges* PathEdges::cutAfter(size_t index){
-    return new PathEdges(this->start, this->pathEdges, index + 1);
+PathEdges* PathEdges::cutBefore(int index){
+    return new PathEdges(this->start, this->pathEdges, index);
 }
 
-PathEdges* PathEdges::randomCut(){
+PathEdges* PathEdges::cutAfter(int index){
+    return new PathEdges(this->start, this->pathEdges, index+1);
+}
+
+PathEdges* PathEdges::randomCutReturnFront(){
     int index = rand() % (this->size() + 1);
     return new PathEdges(this->start, this->pathEdges, index);
 }
@@ -108,7 +137,7 @@ Path::Path(){
     this->elevation = 0.0;
 }
 
-Path::Path(vector<Node::Edge*>& edges, double length, int elevation){
+Path::Path(vector<Node::Edge*>& edges, int length, int elevation){
     this->edges = edges;
     this->length = length;
     this->elevation = elevation;
@@ -136,4 +165,8 @@ Node* Path::getEnd(){
         return nullptr;
     }
     return this->edges.back()->v;
+}
+
+bool Path::empty(){
+    return this->edges.empty();
 }

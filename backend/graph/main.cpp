@@ -24,66 +24,93 @@ using namespace std;
 using namespace pqxx;
 
 void runRandom(Graph* graph){
-    // todo: getnegative elevation
-    cout << graph->maxElevation << endl;
+    // todo: get negative elevation
     int n = 100000;
+
+    pair<Node*, Node*> p = graph->getTwoNearNodes(100000);
+    cout << p.first->id << " " << p.second->id << " " << endl;
 
     long start_id(10059067058), end_id(6302552417);
     for (int i=0; i<n; i++) {
-//        start_id = graph->getRandomNodeId();
-//        end_id = graph->getRandomNodeId();
         cout << endl;
-        cout << "[" << i << "] " << start_id << " " << end_id << endl;
 
-        Node *start(graph->nodes[start_id]), *end(graph->nodes[end_id]);
-
+        Node *start(graph->getRandomNode()), *end(graph->getRandomNode());
+        cout << "[" << i << "] " << start->id << " " << end->id << endl;
         auto t0 = chrono::high_resolution_clock::now();
-//        Edges *aStarPath = aStarAlgorithm(graph, start, end, Node::Edge::getLength);
         auto t1 = chrono::high_resolution_clock::now();
-//        auto t_sl = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-//        cout << "(a-star path: length)      length: " << aStarPath->length
-//             << " elevation: " << aStarPath->elevation
-//             << " (time: " << t_sl << ")" << endl;
 
 //        t0 = chrono::high_resolution_clock::now();
-//        Path *dijkstraPath = edgeBasedDijkstraAlgorithm(graph, start, end, Node::Edge::getLength, false, nullptr);
+//        Path *dijkstraPath = edgeBasedDijkstraAlgorithm(
+//                graph, start, end, Node::Edge::getLength, nullptr);
 //        t1 = chrono::high_resolution_clock::now();
 //        auto t_dl = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
 //        cout << "(dijkstra path: length)    length: " << dijkstraPath->length
 //             << " elevation: " << dijkstraPath->elevation
 //             << " (time: " << t_dl << ")" << endl;
-
-//        t0 = chrono::high_resolution_clock::now();
-//        Edges *aStarPathE = aStarAlgorithm(graph, start, end, Node::Edge::getElevation);
-//        t1 = chrono::high_resolution_clock::now();
-//        auto t_se = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-//        cout << "(a-star path: elevation)   length: " << aStarPathE->length
-//             << " elevation: " << aStarPathE->elevation
-//             << " (time: " << t_se << ")" << endl;
 //
-        t0 = chrono::high_resolution_clock::now();
-        Path *dijkstraPathE = edgeBasedDijkstraAlgorithm(graph, start, end, Node::Edge::getElevation, false, nullptr);
-        t1 = chrono::high_resolution_clock::now();
-        auto t_de = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-        cout << "(dijkstra path: elevation) length: " << dijkstraPathE->length
-             << " elevation: " << dijkstraPathE->elevation
-             << " (time: " << t_de << ")" << endl;
-
-        t0 = chrono::high_resolution_clock::now();
-        Path *elenaPath = elenaPathFindMinUsingDijkstra(graph, start, end, 1.5);
-        t1 = chrono::high_resolution_clock::now();
-        auto t_e1 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-        cout << "(elena path)               length: " << elenaPath->length
-             << " elevation: " << elenaPath->elevation
-             << " (time: " << t_e1 << ")" << endl;
-
 //        t0 = chrono::high_resolution_clock::now();
+//        Path *elenaPath = elenaPathFindMinUsingEdgeBasedDijkstra(graph, start, end, 1.5, INT_MAX);
+//        t1 = chrono::high_resolution_clock::now();
+//        auto t_e1 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+//        cout << "(elena path)               length: " << elenaPath->length
+//             << " elevation: " << elenaPath->elevation
+//             << " (time: " << t_e1 << ")" << endl;
+//
+//        t0 = chrono::high_resolution_clock::now();
+//        Path* elenaPath2 = elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
+//                graph, start, end, 1.5, 30, 10, 10, unallowDuplicateUndirectedEdges,
+//                INT_MAX, 3600000
+//        )->toPath();
 //        t1 = chrono::high_resolution_clock::now();
 //        auto t_e2 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
 //        cout << "(elena path)               length: " << elenaPath2->length
 //             << " elevation: " << elenaPath2->elevation
 //             << " (time: " << t_e2 << ")" << endl;
 
+        cout << endl;
+//
+        t0 = chrono::high_resolution_clock::now();
+        Path *dijkstraPath2 = dijkstraAlgorithm(graph, start, end, Node::Edge::getLength, nullptr);
+        t1 = chrono::high_resolution_clock::now();
+        auto t_dl2 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+        cout << "(dijkstra path: length)    length: " << dijkstraPath2->length
+             << " elevation: " << dijkstraPath2->elevation
+             << " (time: " << t_dl2 << ")" << endl;
+
+        t0 = chrono::high_resolution_clock::now();
+        Path *dijkstraPath2r = dijkstraAlgorithm(graph, end, start, Node::Edge::getLength, nullptr);
+        t1 = chrono::high_resolution_clock::now();
+        auto t_dl2r = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+        cout << "(dijkstra path: length)    length: " << dijkstraPath2r->length
+             << " elevation: " << dijkstraPath2->elevation
+             << " (time: " << t_dl2r << ")" << endl;
+
+//        t0 = chrono::high_resolution_clock::now();
+//        Path *elenaPath3 = elenaPathFindMinUsingDijkstra(graph, start, end, 3, INT_MAX);
+//        t1 = chrono::high_resolution_clock::now();
+//        auto t_e3 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+//        cout << "(elena path)               length: " << elenaPath3->length
+//             << " elevation: " << elenaPath3->elevation
+//             << " (time: " << t_e3 << ")" << endl;
+//
+//        t0 = chrono::high_resolution_clock::now();
+//        Path* elenaPath4 = elenaPathSearchMaxUsingGeneticAlgorithm(
+//                graph, start, end, 3, 30, 10, 30, unallowDuplicateUndirectedEdges,
+//                INT_MAX, 3600000
+//        )->toPath();
+//        t1 = chrono::high_resolution_clock::now();
+//        auto t_e4 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+//        cout << "(elena path)               length: " << elenaPath4->length
+//             << " elevation: " << elenaPath4->elevation
+//             << " (time: " << t_e4 << ")" << endl;
+//
+//        Path* path = elenaPath4;
+//        unordered_set<Node::Edge*> uset(path->edges.begin(), path->edges.end());
+//        unordered_set<long> uset2;
+//        for (Node::Edge* edge: path->edges){
+//            uset2.insert(edge->id);
+//        }
+//        cout << path->edges.size() << " " << uset2.size() << " " << uset.size() << endl;
     }
 }
 
@@ -99,22 +126,20 @@ void runRandom(Graph* graph){
 //    runRandom(graph);
 //}
 
-void runUsingDBMap(string connectionString){
+void runUsingDBMap(string connectionString, HighwayConfig highwayConfig){
 
     Graph* graph = new Graph(true);
 //    try {
     pqxx::connection C(connectionString);
 //        pqxx::connection C("dbname = osm-mass user = postgres password = postgres \
 //             hostaddr = 192.168.1.20 port = 5432");
-    prepare_nodes_query(C, all);
-    prepare_edges_query(C, all);
-    prepare_restrictions_query(C, all);
-    graph->addAllNodesFromDB(C, false);
-    graph->addAllEdgesFromDB(C, false);
-    graph->addAllRestrictionsFromDB(C);
+    graph->addAllNodesFromDB(C, highwayConfig, false);
+    graph->addAllEdgesFromDB(C, highwayConfig, false);
+    graph->maxGroup();
+    graph->addAllRestrictionsFromDB(C, highwayConfig);
 //    graph->maxGroup();
 //    graph->edgeBasedMaxGroup();
-    graph->maxGroup();
+    graph->createBallTree();
 //    } catch  (const std::exception &e){
 //        cerr << e.what() << std::endl;
 //        throw e;
@@ -157,27 +182,55 @@ void runUsingDBMap(string connectionString){
 int main(int argc, char *argv[]){
 //    runUsingLocalMap("maps/test", false);
     if (argc < 3){
-        cout << "No argument is given for db name." << endl;
+        cout << "Argument missing." << endl;
         return 1;
     }
     int port = stoi(argv[1]);
     string dbname = argv[2];
 
-    string connectionString = "dbname = " + dbname + " user = postgres password = postgres \
-             hostaddr = 192.168.1.20 port = 5432";
+    string connectionString = "dbname = " + dbname + " user = postgres password = postgres "
+                                                     "hostaddr = 192.168.1.20 port = 5432";
 
+    cout << connectionString << endl;
+    runServer(connectionString, port);
 
-//    runUsingDBMap(connectionString);
-    runServer(connectionString, port, all);
+    if (argc < 4){
+        cout << "Argument missing." << endl;
+        return 1;
+    }
+
+    string configName = argv[3];
+    HighwayConfig mapConfig;
+    if (configName == "all") {
+        mapConfig = all_highways;
+    } else if (configName == "motorway"){
+        mapConfig = motorway;
+    } else if (configName == "trunk"){
+        mapConfig = trunk;
+    } else if (configName == "primary"){
+        mapConfig = primary;
+    } else if (configName == "secondary"){
+        mapConfig = secondary;
+    } else if (configName == "tertiary"){
+        mapConfig = tertiary;
+    } else if (configName == "local") {
+        mapConfig = local;
+    } else if (configName == "cycling") {
+        mapConfig = cycling;
+    } else if (configName == "hiking") {
+        mapConfig = hiking;
+    } else {
+        cout << "invalid configuration name: " << configName << endl;
+        return 1;
+    }
+
+//    MapConfig mapConfig = highway_level;
+
+    runUsingDBMap(connectionString, mapConfig);
+//
 
 //    Graph* graph = new Graph(connectionString);
 //    cout << graph->nearestNode({-71.0505, 42.1017})->id << endl;
-
-
-
-
-
-
 
 
 //    Graph* graph = new Graph(true);

@@ -66,3 +66,6 @@ void chooseFromSet(
     }
 }
 
+int roundToInt(double num){
+    return (int) num + 0.5;
+}

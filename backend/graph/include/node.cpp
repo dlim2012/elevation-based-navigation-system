@@ -5,6 +5,11 @@
 
 #include "node.h"
 
+#ifndef UTILS_H
+#define UTILS_H
+#include "utils.h"
+#endif
+
 using namespace std;
 
 Node::Edge::Edge(Node *v) {
@@ -24,7 +29,7 @@ Node::Edge::Edge(Node *node, bool reversed) {
 }
 
 Node::Edge::Edge(long id, Node *u, Node *v,
-                 double length, int elevation) {
+                 int length, int elevation) {
     this->id = id;
     this->u = u;
     this->v = v;
@@ -33,13 +38,13 @@ Node::Edge::Edge(long id, Node *u, Node *v,
 }
 
 
-double Node::Edge::getLength() { return this->length; };
+int Node::Edge::getLength() { return this->length; };
 
-double Node::Edge::getElevation() { return this->elevation; };
+int Node::Edge::getElevation() { return this->elevation; };
 
-double Node::Edge::getLength(Edge *edge) { return edge->getLength(); }
+int Node::Edge::getLength(Edge *edge) { return edge->getLength(); }
 
-double Node::Edge::getElevation(Edge *edge) { return edge->getElevation(); }
+int Node::Edge::getElevation(Edge *edge) { return edge->getElevation(); }
 
 
 Node::Node(long id, double lon, double lat, int elevation) {
@@ -78,20 +83,20 @@ bool Node::operator==(const Node *node2) const {
 }
 
 
-double distance(double lon1, double lon2, double lat1, double lat2) {
+int distance(double lon1, double lon2, double lat1, double lat2) {
     double lon1_rad = lon1 * M_PI / 180;
     double lon2_rad = lon2 * M_PI / 180;
     double lat1_rad = lat1 * M_PI / 180;
     double lat2_rad = lat2 * M_PI / 180;
-    return acos(sin(lat1_rad) * sin(lat2_rad) + cos(lat1_rad) * cos(lat2_rad) * cos(lon2_rad - lon1_rad)) * 6371 * 1000;
+    return roundToInt(acos(sin(lat1_rad) * sin(lat2_rad) + cos(lat1_rad) * cos(lat2_rad) * cos(lon2_rad - lon1_rad)) * 6371 * 1000 * 100);
 }
 
-double distance(Node *node1, Node *node2) {
+int distance(Node *node1, Node *node2) {
     return distance(node1->lon, node2->lon, node1->lat, node2->lat);
     //    return sqrt(pow(node1->lon - node2->lon, 2) + pow(node1->lat - node2->lat, 2));
 }
 
-double distance(Node *node1, pair<double, double> &p) {
+int distance(Node *node1, pair<double, double> &p) {
     return distance(node1->lon, p.first, node1->lat, p.second);
 //    return sqrt(pow(node1->lon - p.first, 2) + pow(node1->lat - p.second, 2));
 }

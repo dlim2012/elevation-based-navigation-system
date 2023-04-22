@@ -1,3 +1,4 @@
+#include <vector>
 
 #include "node.h"
 
@@ -11,26 +12,28 @@ public:
 
 
     vector<Node::Edge*> edges;
-    double length;
+    int length;
     int elevation;
 
     Path();
-    Path(vector<Node::Edge*>& edges, double length, int elevation);
+    Path(vector<Node::Edge*>& edges, int length, int elevation);
     void addEdge(Node::Edge *edge);
     void revert();
     Node* getStart();
     Node* getEnd();
+    bool empty();
 };
+
 
 class PathEdges {
 public:
 
     struct PathEdge {
         Node::Edge *edge;
-        double length;
+        int length;
         int elevation;
 
-        PathEdge(Node::Edge *edge, double length, int elevation);
+        PathEdge(Node::Edge *edge, int length, int elevation);
     };
 
 
@@ -41,19 +44,24 @@ public:
     };
 
     Node* start;
+    Node* end;
     vector<PathEdge *> pathEdges;
-    double length;
+    int length; // in centimeters
     int elevation;
 
     PathEdges(Node* start);
 
     PathEdges(Node* start, vector<Node::Edge *>& edges);
 
-    PathEdges(Node* start, vector<PathEdge *> &pathEdges, size_t index);
+    PathEdges(Node* start, vector<PathEdge *> &pathEdges, int index);
+
+    PathEdges(Path* path);
+
+    bool empty() const;
 
     int size() const;
 
-    double getLength() const;
+    int getLength() const;
 
     int getElevation() const;
 
@@ -62,14 +70,18 @@ public:
     Node* getEnd();
 
     PathEdge* at(size_t index);
+    
+    Node::Edge* firstEdge();
 
     Node::Edge* lastEdge();
 
     void addEdge(Node::Edge *edge);
 
-    PathEdges* cutAfter(size_t index);
+    PathEdges* cutBefore(int index);
 
-    PathEdges* randomCut();
+    PathEdges* cutAfter(int index);
+
+    PathEdges* randomCutReturnFront();
 
     Path* toPath();
 

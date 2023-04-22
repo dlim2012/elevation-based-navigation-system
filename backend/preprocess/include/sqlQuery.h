@@ -4,6 +4,7 @@
 using namespace std;
 using namespace pqxx;
 
-void timedExecution(connection& C, string query);
-int getNumberOfRows(connection& C, string tableName);
-int getNumberOfPoints(connection& C, string tableName);
+void timedExecution(connection& C, string query, bool skipFail);
+long getNumberOfRows(connection& C, long lastID,  string tableName);
+long getNumberOfPoints(connection& C, long lastID,  string tableName);
+long getLastId(connection& C, string tableName);

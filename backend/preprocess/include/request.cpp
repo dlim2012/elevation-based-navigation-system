@@ -8,55 +8,63 @@ using namespace std;
 using namespace pqxx;
 
 
-vector<int> fetch(string& url, vector<pair<string, string>>& v){
-
+vector<int> fetch(vector<pair<string, string>>& v, string& url, int maxFetch){
     // make body of the post request
     if (v.empty()){
         throw invalid_argument("Empty vector is not allowed.");
     }
-    string body = "{ \"locations\": [";
 
-    for(int i=0; i<v.size()-1; i++){
-        body += "{ \"longitude\": " + v[i].first + ", \"latitude\": " + v[i].second + "}";
-        body += ',';
-    }
-    body += "{ \"longitude\": " + v.back().first + ", \"latitude\": " + v.back().second + "}";
-    body += "]}";
-
-    // make request and get response
-    http::Response response;
-    try
-    {
-        http::Request request{"http://192.168.1.20:1000/api/v1/lookup"};
-        response = request.send("POST", body, {
-                {"Content-Type", "application/json"}
-        });
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "Request failed, error: " << e.what() << '\n';
-    }
-
-    string json = std::string{response.body.begin(), response.body.end()};
-
-    // parse the response
     vector<int> elevations;
-    size_t i = json.find('[');
-    size_t i2 = json.rfind(']');
-    int count = 0;
-    int num = 0;
-    while (++i < i2){
-        char ch = json[i];
-        if (ch == '{'){
-            count = 0;
-            num = 0;
-        } else if (ch == ':'){
-            count++;
-        } else if (count == 3 && '0' <= ch && ch <= '9'){
-            num = num * 10 + (ch - '0');
-        } else if (ch == '}'){
-            elevations.push_back(num);
+    int index = 0;
+    while (index < v.size()) {
+
+        string body = "{ \"locations\": [";
+
+        for (int i = 0; i < maxFetch - 1 && index < v.size() - 1; i++, index++) {
+            body += "{ \"longitude\": " + v[index].first + ", \"latitude\": " + v[index].second + "}";
+            body += ',';
         }
+        body += "{ \"longitude\": " + v[index].first + ", \"latitude\": " + v[index].second + "}";
+        body += "]}";
+        index++;
+
+        // make request and get response
+        http::Response response;
+        try {
+            http::Request request{url};
+            response = request.send("POST", body, {
+                    {"Content-Type", "application/json"}
+            });
+        }
+        catch (const std::exception &e) {
+            cout << body << endl;
+            std::cerr << "Request failed, error: " << e.what() << '\n';
+        }
+
+        string json = std::string{response.body.begin(), response.body.end()};
+
+        // parse the response
+        size_t i = json.find('[');
+        size_t i2 = json.rfind(']');
+        int count = 0;
+        int num = 0;
+        while (++i < i2) {
+            char ch = json[i];
+            if (ch == '{') {
+                count = 0;
+                num = 0;
+            } else if (ch == ':') {
+                count++;
+            } else if (count == 3 && '0' <= ch && ch <= '9') {
+                num = num * 10 + (ch - '0');
+            } else if (ch == '}') {
+                elevations.push_back(num);
+            }
+        }
+    }
+
+    if (v.size() != elevations.size()){
+        throw runtime_error("");
     }
 
     return elevations;
@@ -67,11 +75,12 @@ int _processNodes(
         vector<long>& node_ids,
         vector<pair<string, string>>& points,
         string& fetchUrl,
+        int maxFetch,
         stream_to& stream2
         ){
     int count = 0;
     tuple<long, int> row2;
-    vector<int> elevations = fetch(fetchUrl, points);
+    vector<int> elevations = fetch(points, fetchUrl, maxFetch);
     if (node_ids.size() != elevations.size()){
         throw runtime_error("node_ids and elevation does not match in size.");
     }
@@ -91,6 +100,7 @@ pair<int, int> _processEdges(
         vector<int>& edgeGeomSizes,
         vector<pair<string, string>>& points,
         string& fetchUrl,
+        int maxFetch,
         stream_to& stream2
         ){
     if (rows.size() != edgeGeomSizes.size()){
@@ -111,7 +121,8 @@ pair<int, int> _processEdges(
     }
 
     tuple<long, string, int, int, string> row2;
-    vector<int> elevations = fetch(fetchUrl, points);
+
+    vector<int> elevations = fetch(points, fetchUrl, maxFetch);
 
     if (total != elevations.size()){
         throw runtime_error("Number of elevations does not match");

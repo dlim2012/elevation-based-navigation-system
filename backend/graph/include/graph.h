@@ -33,13 +33,19 @@ struct BallTreeNode {
     Node *node;
     BallTreeNode *left = nullptr;
     BallTreeNode *right = nullptr;
-    double radius = 0.0;
+    int radius = 0; // unit: centimeter
+    int count;
 
-    BallTreeNode(Node *node) {
-        this->node = node;
-    }
+    BallTreeNode(Node *node, int count);
 };
 
+struct Geometry {
+    long startId;
+    long endId;
+    vector<pair<double, double>> points;
+
+    Geometry(long startId, long endId, const vector<pair<double, double>> &points);
+};
 
 class Graph {
 
@@ -52,8 +58,9 @@ public:
     string nodesCsvHeader;
     string edgesCsvHeader;
     unordered_map<long, pair<Node::Edge *, Node::Edge *>> edges; // first edge: u->id < v->id
+    int edgeCount;
     bool populateEdgesField;
-    int maxElevation = 0;
+    unordered_map<long, Geometry*> *edgeGeometries;
 
 private:
 
@@ -65,26 +72,30 @@ private:
     void addRestrictions(Node::Edge *fromEdge, Node::Edge *toEdge, string &type_enum);
 
     BallTreeNode *createBallTree(vector<Node *> data);
-    void nearestNode(BallTreeNode *ballTreeNode, pair<double, double> &target, Node *&node, double &minDistance);
+    void nearestNode(BallTreeNode *ballTreeNode, pair<double, double> &target, Node *&node, int &minDistance);
 
 public:
 
     // initialize
     Graph(bool populateEdgesField);
-    Graph(string &connectionString, MapConfig mapConfig);
+    Graph(string& connectionString, HighwayConfig highwayConfig);
+    Graph(string& connectionString,
+          HighwayConfig highwayConfig,
+          unordered_map<long, Geometry*>* sharedEdgesGeometries);
     // todo: make graph from csv
 
     // add to graph
     Node *addNode(long id, double lon, double lat, int elevation);
     void addNode(Node *node);
-    void addEdge(long id, Node *u, Node *v, double length, int elevation, direction direction);
+    void addEdge(long id, Node *u, Node *v, int length, int elevation, direction direction);
 
-    int addAllNodesFromDB(pqxx::connection_base &C, bool stream);
-    int addAllEdgesFromDB(pqxx::connection_base &C, bool stream);
-    int addAllRestrictionsFromDB(pqxx::connection_base &C);
+    int addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream);
+    int addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream);
+    int addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig);
+    int addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig);
 
     // save graph
-    void saveAllEdgesInCsv(string connectionString, MapConfig mapConfig);
+//    void saveAllEdgesInCsv();
 
 
     void edgeBasedStrongConnectIterative(
@@ -104,6 +115,7 @@ public:
 
     // other functions
     Node* getRandomNode();
+    pair<Node*, Node*> getTwoNearNodes(int maxDistance);
     static bool isRestricted(Node::Edge *p, Node::Edge *c, bool reversed);
 
 

@@ -9,11 +9,13 @@ using namespace std;
 using namespace pqxx;
 
 
-vector<int> fetch(string& url, vector<pair<string, string>>& v);
+vector<int> fetch(vector<pair<string, string>>& v, string& url, int maxFetch);
+
 int _processNodes(
         vector<long>& node_ids,
         vector<pair<string, string>>& points,
         string& fetchUrl,
+        int maxFetch,
         stream_to& stream2
         );
 
@@ -22,5 +24,6 @@ pair<int, int> _processEdges(
         vector<int>& edgeGeomSizes,
         vector<pair<string, string>>& points,
         string& fetchUrl,
+        int maxFetch,
         stream_to& stream2
         );

@@ -15,45 +15,73 @@
 using namespace std;
 using namespace pqxx;
 
+BallTreeNode::BallTreeNode(Node *node, int count) {
+    this->node = node;
+    this->count = count;
+}
+
+Geometry::Geometry(long startId, long endId, const vector<pair<double, double>> &points){
+    this->startId = startId;
+    this->endId = endId;
+    this->points = points;
+}
+
 Graph::Graph(bool populateEdgesField) {
     this->populateEdgesField = populateEdgesField;
     srand(time(nullptr));
+    this->edgeCount = 0;
 }
 
-Graph::Graph(string &connectionString, MapConfig mapConfig) {
+Graph::Graph(string& connectionString, HighwayConfig highwayConfig) {
     this->populateEdgesField = true;
     connection C(connectionString);
-    prepare_nodes_query(C, mapConfig);
-    prepare_edges_query(C, mapConfig);
-    prepare_restrictions_query(C, mapConfig);
-    addAllNodesFromDB(C, false);
-    addAllEdgesFromDB(C, false);
-    addAllRestrictionsFromDB(C);
+    addAllNodesFromDB(C, highwayConfig, false);
+    addAllEdgesFromDB(C, highwayConfig, false);
+    addAllRestrictionsFromDB(C, highwayConfig);
     maxGroup();
+    addAllEdgeGeometriesFromDB(C, highwayConfig);
     this->ballTree = createBallTree();
+    this->populateEdgesField = false;
+    this->edges.clear();
+    cout << this->nodes.size() << endl;
 }
 
-
-void saveAllEdgesInCsv(string connectionString, MapConfig mapConfig) {
-    unordered_map<long, vector<pair<double, double>>> umap = allEdges(connectionString);
-
-    Graph *graph = new Graph(connectionString, mapConfig);
-
-    ofstream edgesFile;
-    edgesFile.open("csv_files/mass-edges.csv");
-
-    edgesFile << fixed << setprecision(8) << "index,longitude1,latitude1,longitude2,latitude2" << endl;
-
-    int index(0);
-    for (auto pair1: graph->edges) {
-        vector<pair<double, double>> &v = umap[pair1.first];
-        for (int i = 0; i < v.size() - 1; i++) {
-            edgesFile << index++ << "," << v[i].first << "," << v[i].second << "," << v[i + 1].first << ","
-                      << v[i + 1].second << endl;
-        }
-    }
-    edgesFile.close();
+Graph::Graph(string& connectionString,
+      HighwayConfig highwayConfig,
+      unordered_map<long, Geometry*>* sharedEdgesGeometries){
+    this->edgeGeometries = sharedEdgesGeometries;
+    this->populateEdgesField = true;
+    connection C(connectionString);
+    addAllNodesFromDB(C, highwayConfig, false);
+    addAllEdgesFromDB(C, highwayConfig, false);
+    addAllRestrictionsFromDB(C, highwayConfig);
+    maxGroup();
+    addAllEdgeGeometriesFromDB(C, highwayConfig);
+    this->ballTree = createBallTree();
+    this->populateEdgesField = false;
+    this->edges.clear();
+    cout << this->nodes.size() << endl;
 }
+
+//void Graph::saveAllEdgesInCsv() {
+//
+////    Graph *graph = new Graph(C, highwayConfig);
+//
+//    ofstream edgesFile;
+//    edgesFile.open("csv_files/mass-edges.csv");
+//
+//    edgesFile << fixed << setprecision(8) << "index,longitude1,latitude1,longitude2,latitude2" << endl;
+//
+//    int index(0);
+//    for (auto pair1: this->edges) {
+//        vector<pair<double, double>> &v = this->edgeGeometries[pair1.first];
+//        for (int i = 0; i < v.size() - 1; i++) {
+//            edgesFile << index++ << "," << v[i].first << "," << v[i].second << "," << v[i + 1].first << ","
+//                      << v[i + 1].second << endl;
+//        }
+//    }
+//    edgesFile.close();
+//}
 
 
 Node *Graph::addNode(long id, double lon, double lat, int elevation) {
@@ -66,7 +94,7 @@ void Graph::addNode(Node *node) {
 
 
 
-void Graph::addEdge(long id, Node *u, Node *v, double length, int elevation, direction direction) {
+void Graph::addEdge(long id, Node *u, Node *v, int length, int elevation, direction direction) {
     if (direction == none) {
         return;
     }
@@ -75,6 +103,9 @@ void Graph::addEdge(long id, Node *u, Node *v, double length, int elevation, dir
 
 
     if (direction == bidirectional || direction == oneway) {
+        if (u->edges.find(id) == u->edges.end()){
+            this->edgeCount++;
+        }
         edge1 = new Node::Edge(id, u, v, length, elevation);
         u->edges[id] = edge1;
         v->reversedEdges[id] = edge1;
@@ -83,6 +114,9 @@ void Graph::addEdge(long id, Node *u, Node *v, double length, int elevation, dir
     }
 
     if (direction == bidirectional || direction == onewayReversed) {
+        if (v->edges.find(id) == v->edges.end()){
+            this->edgeCount++;
+        }
         edge2 = new Node::Edge(id, v, u, length, elevation);
         v->edges[id] = edge2;
         u->reversedEdges[id] = edge2;
@@ -97,11 +131,11 @@ void Graph::addEdge(long id, Node *u, Node *v, double length, int elevation, dir
             this->edges[id] = {edge2, edge1};
         }
     }
-
-    this->maxElevation = max(this->maxElevation, elevation);
 }
 
-int Graph::addAllNodesFromDB(pqxx::connection_base &C, bool stream) {
+int Graph::addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream) {
+    cout << "Fetching nodes data from DB... ";
+    prepare_nodes_query(C, highwayConfig);
     pqxx::work w(C);
     if (stream) {
         throw runtime_error("Not Implemented.");
@@ -116,12 +150,14 @@ int Graph::addAllNodesFromDB(pqxx::connection_base &C, bool stream) {
                     stod(row1[2].c_str()),
                     stoi(row1[3].c_str()));
         }
-        cout << "Fetched all nodes data from DB (count: " << r.size() << ")" << endl;
+        cout << "done (count: " << r.size() << ")" << endl;
         return r.size();
     }
 }
 
-int Graph::addAllEdgesFromDB(pqxx::connection_base &C, bool stream) {
+int Graph::addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream) {
+    cout << "Fetching edges data from DB... ";
+    prepare_edges_query(C, highwayConfig);
     pqxx::work w(C);
     if (stream) {
         throw runtime_error("Not Implemented.");
@@ -130,7 +166,7 @@ int Graph::addAllEdgesFromDB(pqxx::connection_base &C, bool stream) {
         w.commit();
         for (pqxx::row row1: r) {
             long id = stol(row1[0].c_str());
-            double length = stod(row1[3].c_str());
+            int length = (int) (stod(row1[3].c_str()) * 100);
             int elevation = stoi(row1[4].c_str());
 
             long u_id = stol(row1[1].c_str());
@@ -146,14 +182,13 @@ int Graph::addAllEdgesFromDB(pqxx::connection_base &C, bool stream) {
                 continue;
 
             direction direction;
-            if (stoi(row1[5].c_str()) == 0) {
+            if (stoi(row1[5].c_str()) == 0 || highwayConfig == cycling || highwayConfig == hiking) {
                 direction = bidirectional;
             } else {
                 direction = oneway;
             }
             this->addEdge(id, itU->second, itV->second, length, elevation, direction);
         }
-        cout << "Fetched all edges data from DB (count: " << r.size() << ")" << endl;
 
         int count = 0;
         for (auto p: this->edges) {
@@ -163,7 +198,8 @@ int Graph::addAllEdgesFromDB(pqxx::connection_base &C, bool stream) {
                 count++;
             }
         }
-        cout << count << endl;
+        this->edgeCount = count;
+        cout << "done (count: " << r.size() << " rows, directed edges: " << count << ")" << endl;
         return r.size();
     }
 }
@@ -206,8 +242,13 @@ void Graph::addRestrictions(Node::Edge *fromEdge, Node::Edge *toEdge, string &ty
     }
 }
 
-int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C) {
+int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig) {
     // Note: the populateEdgesField has to be true to add restrictions to edges
+    if (highwayConfig == cycling || highwayConfig == hiking || highwayConfig == motorway_without_restrictions){
+        return 0;
+    }
+    cout << "Fetching restrictions data from DB... ";
+    prepare_restrictions_query(C, highwayConfig);
     if (!this->populateEdgesField) {
         throw runtime_error("The populateEdgesField has to be true to add restrictions to edges.");
     }
@@ -308,7 +349,7 @@ int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C) {
         }
 
     }
-    cout << "Fetched all restrictions data from DB (count: " << r.size() << ")" << endl;
+    cout << "done (count: " << r.size() << ")" << endl;
     return r.size();
 }
 
@@ -428,6 +469,7 @@ void Graph::edgeBasedStrongConnectIterative(
 
 
 void Graph::maxGroup() {
+    cout << "Extracting the biggest strongly connected components... ";
     int index(0);
     stack<Node::Edge *> tarjanStack;
     unordered_set<Node::Edge *> onTarjanStack;
@@ -472,7 +514,7 @@ void Graph::maxGroup() {
                 edgeIt = node->reversedEdges.erase(edgeIt);
             } else {
                 edgeIt++;
-                edgeCount1++;
+                edgeCount2++;
             }
         }
 
@@ -484,14 +526,36 @@ void Graph::maxGroup() {
         if (it.second.first == nullptr && it.second.second == nullptr)
             countNull++;
     }
-    cout << "null " << countNull << endl;
 
     swap(this->nodes, newNodes);
     swap(this->edges, newEdges);
+    this->edgeCount = edgeCount1;
 
-    cout << "Extracted the biggest strongly connected components (node: " << this->nodes.size() << ", edge: "
+    cout << "done (node: " << this->nodes.size() << ", edge: "
          << edgeCount1 << ")" << endl;
 
+
+}
+
+int Graph::addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig){
+    cout << "Fetching edge geometries... ";
+    prepare_edges_geom_query(C, highwayConfig);
+    pqxx::work w(C);
+    pqxx::result r = w.exec_prepared("edges_geom");
+    long lineCount = 0;
+    for (pqxx::row row: r) {
+        long id = stol(row[0].c_str());
+        string geom_text = row[1].c_str();
+        long u = stol(row[2].c_str());
+        long v = stol(row[3].c_str());
+        if (this->edges.find(id) == this->edges.end()){
+            continue;
+        }
+        (*this->edgeGeometries)[id] = new Geometry(u, v, parseLineString(geom_text));
+        lineCount += this->edgeGeometries->at(id)->points.size();
+    }
+    cout << "done (row count: " << r.size() << ", line count: " << lineCount << ")" << endl;
+    return r.size();
 }
 
 bool Graph::isRestricted(Node::Edge *p, Node::Edge *c, bool reversed) {
@@ -512,14 +576,8 @@ bool Graph::isRestricted(Node::Edge *p, Node::Edge *c, bool reversed) {
     return false;
 }
 
-Node* Graph::getRandomNode() {
-    auto it = this->nodes.cbegin();
-    int random = rand() % this->nodes.size();
-    std::advance(it, random);
-    return it->second;
-}
-
 BallTreeNode *Graph::createBallTree() {
+    cout << "Creating ball tree... ";
     vector<Node *> data;
     for (auto it: nodes) {
         data.push_back(it.second);
@@ -529,14 +587,14 @@ BallTreeNode *Graph::createBallTree() {
         return nullptr;
     }
     this->ballTree = createBallTree(data);
-    cout << "BallTree created." << endl;
+    cout << "done" << endl;
     return this->ballTree;
 }
 
 BallTreeNode *Graph::createBallTree(vector<Node *> data) {
     BallTreeNode *root;
     if (data.size() == 1) {
-        root = new BallTreeNode(data[0]);
+        root = new BallTreeNode(data[0], 1);
     } else {
         double x_mean(0.0), y_mean(0.0), x_spread(0.0), y_spread(0.0);
         for (Node *node: data) {
@@ -560,7 +618,7 @@ BallTreeNode *Graph::createBallTree(vector<Node *> data) {
                 return a->lat < b->lat;
             });
         }
-        root = new BallTreeNode(data[pivotIndex]);
+        root = new BallTreeNode(data[pivotIndex], data.size());
         root->left = createBallTree(vector<Node *>(data.begin(), data.begin() + pivotIndex));
         if (pivotIndex + 1 < data.size())
             root->right = createBallTree(vector<Node *>(data.begin() + pivotIndex + 1, data.end()));
@@ -572,13 +630,14 @@ BallTreeNode *Graph::createBallTree(vector<Node *> data) {
     return root;
 }
 
-void Graph::nearestNode(BallTreeNode *ballTreeNode, pair<double, double> &target, Node *&node, double &minDistance) {
+void Graph::nearestNode(BallTreeNode *ballTreeNode, pair<double, double> &target, Node *&node, int &minDistance) {
     if (ballTreeNode == nullptr)
         return;
-    if (distance(ballTreeNode->node, target) - ballTreeNode->radius >= minDistance)
+    int curDistance = distance(ballTreeNode->node, target);
+
+    if (curDistance - ballTreeNode->radius >= minDistance)
         return;
 
-    double curDistance = distance(ballTreeNode->node, target);
     if (curDistance < minDistance) {
         node = ballTreeNode->node;
         minDistance = curDistance;
@@ -593,7 +652,62 @@ Node *Graph::nearestNode(pair<double, double> target) {
     }
 
     Node *res = ballTree->node;
-    double minDistance = DBL_MAX;
+    int minDistance = INT_MAX;
     nearestNode(ballTree, target, res, minDistance);
     return res;
 }
+
+Node* Graph::getRandomNode() {
+    cout << this->nodes.size() << endl;
+    auto it = this->nodes.begin();
+    int random = rand() % this->nodes.size();
+    std::advance(it, random);
+    return it->second;
+}
+
+Node* nearNode(BallTreeNode *ballTreeNode, pair<double, double> &target, int maxDistance) {
+
+    if (ballTreeNode == nullptr)
+        return nullptr;
+
+    int curDistance = distance(ballTreeNode->node, target);
+    if (curDistance - ballTreeNode->radius > maxDistance) {
+        return nullptr;
+    }
+
+    if (curDistance < maxDistance) {
+        return ballTreeNode->node;
+    }
+
+    Node* node;
+    if (rand() % 2 == 1) {
+        node = nearNode(ballTreeNode->left, target, maxDistance);
+        if (node != nullptr){
+            return node;
+        }
+        node = nearNode(ballTreeNode->right, target, maxDistance);
+    } else {
+        node = nearNode(ballTreeNode->left, target, maxDistance);
+        if (node != nullptr){
+            return node;
+        }
+        node = nearNode(ballTreeNode->right, target, maxDistance);
+    }
+    return node;
+}
+pair<Node*, Node*> Graph::getTwoNearNodes(int maxDistance){
+    Node *node, *node2;
+
+    // retry up to 10 times to search for two nodes in distance between maxDistance/2 and maxDistance
+    int n = 10;
+    for (int i=1; i<=n; i++){
+        node = this->getRandomNode();
+        pair<double, double> target = {node->lon, node->lat};
+        node2 = nearNode(this->ballTree, target, maxDistance);
+        if (distance(node, node2) > maxDistance / 2){
+            break;
+        }
+    }
+    return {node, node2};
+}
+

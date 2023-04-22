@@ -21,3 +21,4 @@ extern void chooseFromSet(
         size_t numRandom
 );
 
+extern int roundToInt(double num);
