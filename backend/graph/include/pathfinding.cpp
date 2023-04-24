@@ -232,13 +232,11 @@ Path *dijkstraAlgorithm(
 
 
     auto t0 = chrono::high_resolution_clock::now();
-    cout<< "shortest path: dijkstra start" << endl;
     // find the path reversed so that the path can be reconstructed non-reversed
     unordered_map<Node *, int> minWeightEdge = dijkstraAlgorithm(
             graph, start, end, curMinWeight, -1.0, getWeight, true, &prevEdgeMap, validNodes);
     auto t1 = chrono::high_resolution_clock::now();
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-    cout<< "shortest path: dijkstra end " << t << endl;
 
     Node::Edge* prevEdge;
     while (start != end) {
@@ -246,7 +244,6 @@ Path *dijkstraAlgorithm(
         path->addEdge(prevEdge);
         start = prevEdge->v;
     }
-    cout<< "shortest path: path " << t << endl;
 
     return path;
 }
@@ -286,8 +283,7 @@ unordered_set<Node*> getReachableNodes(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
         ){
 
 
@@ -301,7 +297,6 @@ unordered_set<Node*> getReachableNodes(
     int curMinWeight = INT_MAX;
 
     auto t0 = chrono::high_resolution_clock::now();
-    cout<< "elena path: dijkstra start" << endl;
 
     unordered_map<Node *, int> minWeightStart = dijkstraAlgorithm(
             graph, start, end, curMinWeight, maxWeightRatio, Node::Edge::getLength, false, nullptr, nullptr
@@ -309,25 +304,17 @@ unordered_set<Node*> getReachableNodes(
 
     auto t1 = chrono::high_resolution_clock::now();
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-    cout << "elena path: dijkstra end " << t << endl;
 
     // If all edges are reachable, return empty set to indicate this fact
     if (minWeightStart.size() == graph->edgeCount + 1){
         return validNodes;
     }
 
-    // return empty set if the destination cannot be reached in maxLength
-    if (curMinWeight > maxLength){
-        return validNodes;
-    }
-
-    cout<< "elena path: dijkstra start" << endl;
     unordered_map<Node *, int> minWeightEnd = dijkstraAlgorithm(
             graph, start, end, curMinWeight, maxWeightRatio, Node::Edge::getLength, true, nullptr, nullptr
     );
     t1 = chrono::high_resolution_clock::now();
     t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-    cout<< "elena path: dijkstra end " << t << endl;
 
     int maxWeight = getMaxWeight(curMinWeight, maxWeightRatio);
     for (pair<Node *const, int> &pair1: minWeightEnd) {
@@ -347,8 +334,7 @@ unordered_set<Node::Edge *> getReachableEdges(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 ) {
 
     if (graph->nodes.find(start->id) == graph->nodes.end()
@@ -370,11 +356,6 @@ unordered_set<Node::Edge *> getReachableEdges(
 
     // If all edges are reachable, return empty set to indicate this fact
     if (minWeightStart.size() == graph->edgeCount + 1){
-        return validEdges;
-    }
-
-    // return empty set if the destination cannot be reached in maxLength
-    if (curMinWeight > maxLength){
         return validEdges;
     }
 
@@ -406,11 +387,10 @@ Path *elenaPathFindMinUsingDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 ) {
 
-    unordered_set<Node *> validNodes = getReachableNodes(graph, start, end, maxWeightRatio, maxLength);
+    unordered_set<Node *> validNodes = getReachableNodes(graph, start, end, maxWeightRatio);
     if (validNodes.empty()){
         return new Path();
     }
@@ -421,11 +401,10 @@ Path *elenaPathFindMinUsingEdgeBasedDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 ) {
 
-    unordered_set<Node::Edge *> validEdges = getReachableEdges(graph, start, end, maxWeightRatio, maxLength);
+    unordered_set<Node::Edge *> validEdges = getReachableEdges(graph, start, end, maxWeightRatio);
     if (validEdges.empty()){
         return new Path();
     }
@@ -956,8 +935,8 @@ int weightedSelection(int numChoices, default_random_engine rng){
 
 PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
         Graph *graph, Node *start, Node *end, double maxLengthRatio, size_t numProduce,
-        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge, int maxLength,
-        int maxMilliseconds){
+        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
+        int maxMilliseconds, int minEpoch){
 
     auto t0 = chrono::high_resolution_clock::now();
 
@@ -969,10 +948,6 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
             graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
             false, nullptr, nullptr
     );
-
-    if (curMinWeight > maxLength){
-        return new PathEdges(start);
-    }
 
     unordered_map<Node *, Node::Edge *> prevEdgeMap;
     unordered_map<Node *, int> minWeightEnd = dijkstraAlgorithm(
@@ -1117,7 +1092,7 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
             pathEdgesSet.insert(
                     mutatePathEdges(pathEdges, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
         }
-        if (epoch >= 1 && chrono::duration_cast<chrono::milliseconds>(
+        if (epoch >= minEpoch && chrono::duration_cast<chrono::milliseconds>(
                 chrono::high_resolution_clock::now() - t0).count() > maxMilliseconds){
             break;
         }
@@ -1136,8 +1111,8 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
 
 PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
         Graph *graph, Node *start, Node *end, double maxLengthRatio, size_t numProduce,
-        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge, int maxLength,
-        int maxMilliseconds){
+        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
+        int maxMilliseconds, int minEpoch){
 
     auto t0 = chrono::high_resolution_clock::now();
     // 1) minWeightEnd and the shortest path
@@ -1149,10 +1124,6 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
             graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
             false, nullptr, lastEdge, nullptr
     );
-
-    if (curMinWeight > maxLength){
-        return new PathEdges(start);
-    }
 
     unordered_map<Node::Edge *, Node::Edge *> prevEdgeMap;
     unordered_map<Node::Edge *, int> minWeightEnd = edgeBasedDijkstraAlgorithm(
@@ -1290,7 +1261,7 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
                     edgeBasedMutatePathEdges(pathEdges, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
         }
 
-        if (epoch >= 1 && chrono::duration_cast<chrono::milliseconds>(
+        if (epoch >= minEpoch && chrono::duration_cast<chrono::milliseconds>(
                 chrono::high_resolution_clock::now() - t0).count() > maxMilliseconds){
             break;
         }

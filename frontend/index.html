@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewpoint" content="width=device-width, initial-scale=1.0">
-        <title>Leaflet Tutorial</title>
+        <title>EleNA</title>
 
         <!-- leaflet css -->
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -15,6 +15,7 @@
         <link rel="stylesheet" href="lib/leaflet/plugins/css/leaflet-sidebar.modified.css" />
         <link rel="stylesheet" href="lib/leaflet/plugins/css/L.cascadeButtons.css" />
         <link rel="stylesheet" href="lib/leaflet/plugins/css/leaflet.contextmenu.css" />
+        <link rel="stylesheet" href="lib/leaflet/plugins/css/leaflet-distance-marker.css" />
         <link rel="stylesheet" href="http://code.ionicframework.com/ionicons/1.5.2/css/ionicons.min.css">
         <!-- <link rel="stylesheet" href="lib/leaflet/plugins/css/leaflet.awesome-markers.css" /> -->
         <link href="http://netdna.bootstrapcdn.com/font-awesome/4.0.0/css/font-awesome.css" rel="stylesheet">
@@ -42,7 +43,7 @@
     
                 <!-- bottom aligned tabs -->
                 <ul role="tablist">
-                    <li><a href="https://github.com/dlim2012/elevation-based-navigation-system"><i class="fa-brands fa-github"></i></a></li>
+                    <li><a href="#github" role="tab"><i class="fa-brands fa-github"></i></a></li>
                 </ul>
             </div>
     
@@ -50,7 +51,7 @@
             <div class="leaflet-sidebar-content">
                 <div class="leaflet-sidebar-pane" id="home">
                     <h1 class="leaflet-sidebar-header">
-                        Project ELENA
+                        Project EleNa
                         <!-- Elevation-based Navigation system -->
                         <span class="leaflet-sidebar-close"><i class="fa fa-caret-left"></i></span>
                     </h1>
@@ -64,12 +65,17 @@
                         <b>Elevation-based navigation system</b>
                     </font> -->
                     <br>
-                    <font size="2">
+                    <span style="font-size: 15.0pt; ">
+                    <b>Elevation based Navigation system</b>
+                    </span>
+                    <br>
+                    <br>
+<!--                    <font size="2">-->
                         <b>Introduction: </b>Navigation systems optimize for the shortest or fastest route. However, they do not consider elevation gain. Let’s say you are hiking or biking from one location to another. You may want to literally go the extra mile if that saves you a couple thousand feet in elevation gain. Likewise, you may want to maximize elevation gain if you are looking for an intense yet time-constrained workout.
                         <br>
                         <br>
                         <b>Goal:</b> Given a start and an end location, search for a route that maximizes or minimizes elevation gain, while limiting the total distance between the two locations to x% of the shortest path.
-                    </font>
+<!--                    </font>-->
 
                 </div>
 
@@ -96,9 +102,9 @@
                     <br>
                     <input type="checkbox" id="shortest-length" name="shortest_length" value="1" checked="checked">
                     <label for="javascript">Shortest length (Red)</label><br>
-                    <input type="checkbox" id="minimize-elevation" name="minimize_elevation" value="2">
+                    <input type="checkbox" id="minimize-elevation" name="minimize_elevation" value="2" checked="checked">
                     <label for="javascript">Minimize elevation gain (Blue)</label><br>
-                    <input type="checkbox" id="maximize-elevation" name="maximize_elevation" value="3">
+                    <input type="checkbox" id="maximize-elevation" name="maximize_elevation" value="3" checked="checked">
                     <label for="javascript">Maximize elevation gain (Green)</label>
                     <br>
                     </form>
@@ -113,11 +119,14 @@
                         <span class="leaflet-sidebar-close"><i class="fa fa-caret-left"></i></span>
                     </h1>
                     <br>
-                    <b>Target Max Computation Time</b><br>
+                    <b>Target Computation Time for Elevation Gain Maximization</b><br>
+                    - Computation may take longer if requested separately.
                     <form>
+                        <input type="radio" id="computation-0" name="computation_time" value="0" checked="checked">
+                        <label for="javascript"> Minimal </label><br>
                         <input type="radio" id="computation-1" name="computation_time" value="2">
                         <label for="javascript"> 2 seconds </label><br>
-                        <input type="radio" id="computation-2" name="computation_time" value="5" checked="checked">
+                        <input type="radio" id="computation-2" name="computation_time" value="5">
                         <label for="javascript"> 5 seconds </label><br>
                         <input type="radio" id="computation-3" name="computation_time" value="15">
                         <label for="javascript"> 15 seconds </label><br>
@@ -154,11 +163,11 @@
                     <table class="ckptTable" id="ckptTable" style="width:100%">
                         <thead>
                           <tr>
-                            <th class="header-label" width="10%">#</th>
-                            <th class="header-label" width="25%">Latitude</th>
-                            <th class="header-label" width="25%">Longitude</th>
+                            <th class="header-label" width="8%">#</th>
+                            <th class="header-label" width="27%">Latitude</th>
+                            <th class="header-label" width="27%">Longitude</th>
                             <th class="header-label" width="10%">Max Length Ratio</th>
-                            <th class="header-label" width="30%">Search Path / Remove</th>
+                            <th class="header-label" width="28%">Search Path / Remove</th>
                           </tr>
                         <tbody>
                           <tr id="ckpt-tr-0" draggable="true">
@@ -193,16 +202,6 @@
                                 <button><i class="fa-solid fa-minus" id="ckpt-2-remove"></i></button>
                             </td>
                           </tr>
-                          <tr id="ckpt-tr-3" draggable="true">
-                            <td><button class="ckpt-button">3</button></td>
-                            <td><input type="number" step="any" id="ckpt-3-lat"></td>
-                            <td><input type="number" step="any" id="ckpt-3-lng"></td>
-                            <td><input type="number" step="0.01" id="ckpt-3-r"></td>
-                            <td>
-                                <button><i class="fa-solid fa-route"></i></button>
-                                <button><i class="fa-solid fa-minus" id="ckpt-3-remove"></i></button>
-                            </td>
-                          </tr>
                           <tr id="ckpt-tr-+">
                             <td><button id="add-ckpt-row"><i class="fa-solid fa-plus"></i></button></td>
                             <td><input type="number" id="ckpt-+-lat" disabled></td>
@@ -210,16 +209,26 @@
                             <td><input type="number" step="0.01" id="ckpt-+-r" disabled></td>
                             <td></td>
                           </tr>
-                          <tr id="ckpt-tr-4" draggable="true">
-                            <td><button class="ckpt-button">End</button></td>
-                            <td><input type="number" id="ckpt-4-lat"></td>
-                            <td><input type="number" id="ckpt-4-lng"></td>
-                            <td><input type="number" step="0.01" id="ckpt-4-r" disabled></td>
-                            <td>
-                                <button><i class="fa-solid fa-route" id="search-all"></i></button>
-                                <button><i class="fa-solid fa-minus" id="ckpt-4-remove"></i></button>
-                            </td>
+                          <tr id="ckpt-tr-3" draggable="true">
+                              <td><button class="ckpt-button">3</button></td>
+                              <td><input type="number" step="any" id="ckpt-3-lat"></td>
+                              <td><input type="number" step="any" id="ckpt-3-lng"></td>
+                              <td><input type="number" step="0.01" id="ckpt-3-r"></td>
+                              <td>
+                                  <button><i class="fa-solid fa-route" id="search-all"></i></button>
+                                  <button><i class="fa-solid fa-minus" id="ckpt-3-remove"></i></button>
+                              </td>
                           </tr>
+<!--                          <tr id="ckpt-tr-4" draggable="true">-->
+<!--                            <td><button class="ckpt-button">End</button></td>-->
+<!--                            <td><input type="number" id="ckpt-4-lat"></td>-->
+<!--                            <td><input type="number" id="ckpt-4-lng"></td>-->
+<!--                            <td><input type="number" step="0.01" id="ckpt-4-r" disabled></td>-->
+<!--                            <td>-->
+<!--                                <button><i class="fa-solid fa-route" id="search-all"></i></button>-->
+<!--                                <button><i class="fa-solid fa-minus" id="ckpt-4-remove"></i></button>-->
+<!--                            </td>-->
+<!--                          </tr>-->
                         </tbody>
                       </table>
                     <div id="results">
@@ -240,13 +249,15 @@
                     <label for="javascript">Marker drag</label><br>
                     <input type="checkbox" id="auto-search-on-marker-remove" name="auto_search" checked="checked">
                     <label for="javascript">Marker remove</label><br>
+                    <input type="checkbox" id="auto-search-on-show-path" name="auto_search" checked="checked">
+                    <label for="javascript">Show path</label><br>
 
                     <br>
                     <b>Max Length Ratio</b><br>
                     <input type="checkbox" id="unified-max-length-ratio"  checked="checked">
                     <label for="javascript">Use same max length ratio for each checkpoint</label><br>
                     <br>
-                    <b>Checkpoints table drag</b><br>
+                    <b>Checkpoints Table</b><br>
                     <input type="radio" id="ckpt-table-drag-and-drop" name="ckpt-table-drag-policy" value="1" checked="checked">
                     <label for="javascript">Drag and drop</label><br>
                     <input type="radio" id="ckpt-table-drag-and-switch" name="ckpt-table-drag-policy" value="2">
@@ -255,10 +266,67 @@
                     <b>Recalculate path</b><br>
                     <input type="checkbox" id="search-again" value="1">
                     <label for="javascript">Allow recalculating path for elevation-maximization</label><br>
+
+                    <br>
+                    <b>Show distance</b><br>
+                    <input type="checkbox" id="show-distance" value="1">
+                    <label for="javascript">Show distance marker along the path</label><br>
+
+
                 </div>
-                    
-                    
-    
+
+                <div class="leaflet-sidebar-pane" id="github">
+                    <h1 class="leaflet-sidebar-header">
+                        GitHub
+                        <span class="leaflet-sidebar-close"><i class="fa fa-caret-left"></i></span>
+                    </h1>
+                    <br>
+<!--                    <b>Current Issues</b><br>-->
+<!--                    -Backend server can be turned off due to SIGPIPE (broken pipe) error. (It will automatically be online in 30 minutes.)<br>-->
+<!--                    <br>-->
+                    <b>Contributions</b><br>
+                    -Creator: Jung Hoon Lim (junghoonlim@umass.edu)<br>
+                    <br>
+                    <b>Used Sources</b><br>
+                    -Road Data:
+                        <a href="https://www.openstreetmap.org/"> OpenStreetMap</a>,
+                        <a href="https://github.com/Jorl17/open-elevation">Open-Elevation</a>,
+                        <a href="https://giscience.github.io/openrouteservice/documentation/Tag-Filtering.html">Tag Filtering</a><br>
+                    -Database:
+                        <a ref="https://osm2pgsql.org/">OSM2PGSQL</a>,
+                        <a href="https://www.postgresql.org/">PostgreSQL</a> v15 with
+                            <a href="https://postgis.net/">PostGIS extension</a><br>
+                    -Backend: C++17 <br>
+                    -C++ dependencies:
+                        <a href="https://pqxx.org/libpqxx/">Libpqxx</a> (connection to database),
+                        <a href="https://crowcpp.org/master/">Crowcpp</a> (REST API),
+                        <a href="https://github.com/elnormous/HTTPRequest">HTTPRequest</a>,
+                        <a href="https://www.boost.org/">Boost Libraries</a> <br>
+                    -Frontend:
+                        HTML5, JavaScript,
+                        <a href="https://leafletjs.com/reference.html#icontrol">Leaflet</a>,
+                        <a href="https://fontawesome.com/">Font Awesome</a><br>
+                    -Leaflet plugins:
+                        <a href="https://github.com/CliffCloud/Leaflet.EasyButton">L.EasyButton</a>,
+                        <a href="https://github.com/lennardv2/Leaflet.awesome-markers">Leaflet.Awesome-Markers</a>,
+                        <a href="https://github.com/noerw/leaflet-sidebar-v2">leaflet-sidebar-v2</a>,
+                        <a href="https://github.com/aratcliffe/Leaflet.contextmenu">Leaflet.contextmenu</a>,
+                        <a href="https://github.com/adoroszlai/leaflet-distance-markers">leaflet-distance-markers</a>,
+                        <a href="https://github.com/perliedman/leaflet-control-geocoder">Control.GeoCoder</a><br>
+                    -Tile layers:
+                        OpenStreetMap default,
+                        <a href="https://carto.com/basemaps/">Carto maps</a>,
+                        <a href="https://developers.google.com/maps/documentation/tile">Google maps</a><br>
+                    <br>
+                    <b>Path search algorithms</b><br>
+                    -Minimize elevation gain: Dijkstra's algorithm (optimal)<br>
+                    -Maximizing elevation gain: a genetic algorithm (metaheuristic)<br>
+                    <br>
+                    <b>GitHub Link:</b> <a href="https://github.com/dlim2012/elevation-based-navigation-system">"https://github.com/dlim2012/elevation-based-navigation-system" </a>
+
+                </div>
+
+
             </div>
         </div>
         <div id="map">
@@ -281,4 +349,6 @@
 <script src="lib/leaflet/plugins/js/L.cascadeButtons.js"></script>
 <script src="lib/leaflet/plugins/js/leaflet.contextmenu.js"></script>
 <script src="lib/leaflet/plugins/js/leaflet.awesome-markers.modified.js"></script>
-<script src="lib/leaflet/plugins/js/Control.Loading.js"></script>
+<!--<script src="lib/leaflet/plugins/js/Control.Loading.js"></script>-->
+<script src="lib/leaflet/plugins/js/leaflet-distance-marker.js"></script>
+<script src="lib/leaflet/plugins/js/leaflet.geometryutil.js"></script>

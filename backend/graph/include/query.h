@@ -31,13 +31,13 @@ enum LocationConfig {
 
 
 
-void prepare_nodes_query(connection_base &C, HighwayConfig highwayConfig);
+void prepare_nodes_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig);
 
-void prepare_edges_query(connection_base &C, HighwayConfig highwayConfig);
+void prepare_edges_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig);
 
-void prepare_restrictions_query(connection_base &C, HighwayConfig highwayConfig);
+void prepare_restrictions_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig);
 
-void prepare_edges_geom_query(connection_base &C, HighwayConfig highwayConfig);
+void prepare_edges_geom_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig);
 
 vector<pair<double, double>> parseLineString(string &lineString);
 

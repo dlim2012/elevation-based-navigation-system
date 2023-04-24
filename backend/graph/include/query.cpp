@@ -71,7 +71,7 @@ const string& highwayConfigToType(HighwayConfig highwayConfig){
     }
 }
 
-void prepare_nodes_query(connection_base &C, HighwayConfig highwayConfig) {
+void prepare_nodes_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig) {
     if (highwayConfig == all_highways) {
         C.prepare(
                 "nodes",
@@ -105,7 +105,7 @@ void prepare_nodes_query(connection_base &C, HighwayConfig highwayConfig) {
 }
 
 
-void prepare_edges_query(connection_base &C, HighwayConfig highwayConfig) {
+void prepare_edges_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig) {
     if (highwayConfig == all_highways){
         C.prepare(
                 "edges",
@@ -132,7 +132,7 @@ void prepare_edges_query(connection_base &C, HighwayConfig highwayConfig) {
     }
 }
 
-void prepare_restrictions_query(connection_base &C, HighwayConfig highwayConfig) {
+void prepare_restrictions_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig) {
     if (highwayConfig == hiking || highwayConfig == cycling || highwayConfig == motorway_without_restrictions) {
         return;
     }
@@ -143,7 +143,7 @@ void prepare_restrictions_query(connection_base &C, HighwayConfig highwayConfig)
     );
 }
 
-void prepare_edges_geom_query(connection_base &C, HighwayConfig highwayConfig) {
+void prepare_edges_geom_query(connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig) {
     if (highwayConfig == all_highways){
         C.prepare(
                 "edges_geom",

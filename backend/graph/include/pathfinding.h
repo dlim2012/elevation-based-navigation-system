@@ -63,38 +63,34 @@ unordered_set<Node*> getReachableNodes(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 );
 
 unordered_set<Node::Edge *> getReachableEdges(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 );
 
 Path *elenaPathFindMinUsingDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 );
 
 Path *elenaPathFindMinUsingEdgeBasedDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
-        double maxWeightRatio,
-        int maxLength
+        double maxWeightRatio
 );
 
 PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
         Graph *graph, Node *start, Node *end, double maxLengthRatio, size_t numProduce,
-        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge, int maxLength,
-        int maxMilliseconds);
+        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
+        int maxMilliseconds, int minEpoch);
 
 PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
         Graph *graph,
@@ -105,8 +101,8 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
         size_t numMaxSelect,
         int numEpoch,
         DuplicateEdge duplicateEdge,
-        int maxLength,
-        int maxMilliseconds
+        int maxMilliseconds,
+        int minEpoch
         );
 
 

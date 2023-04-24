@@ -78,9 +78,9 @@ public:
 
     // initialize
     Graph(bool populateEdgesField);
-    Graph(string& connectionString, HighwayConfig highwayConfig);
+    Graph(string& connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig);
     Graph(string& connectionString,
-          HighwayConfig highwayConfig,
+          HighwayConfig highwayConfig, LocationConfig locationConfig,
           unordered_map<long, Geometry*>* sharedEdgesGeometries);
     // todo: make graph from csv
 
@@ -89,10 +89,10 @@ public:
     void addNode(Node *node);
     void addEdge(long id, Node *u, Node *v, int length, int elevation, direction direction);
 
-    int addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream);
-    int addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream);
-    int addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig);
-    int addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig);
+    int addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream);
+    int addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream);
+    int addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig);
+    int addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig);
 
     // save graph
 //    void saveAllEdgesInCsv();

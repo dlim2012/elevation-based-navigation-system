@@ -126,17 +126,17 @@ void runRandom(Graph* graph){
 //    runRandom(graph);
 //}
 
-void runUsingDBMap(string connectionString, HighwayConfig highwayConfig){
+void runUsingDBMap(string connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig){
 
     Graph* graph = new Graph(true);
 //    try {
     pqxx::connection C(connectionString);
 //        pqxx::connection C("dbname = osm-mass user = postgres password = postgres \
 //             hostaddr = 192.168.1.20 port = 5432");
-    graph->addAllNodesFromDB(C, highwayConfig, false);
-    graph->addAllEdgesFromDB(C, highwayConfig, false);
+    graph->addAllNodesFromDB(C, highwayConfig, locationConfig, false);
+    graph->addAllEdgesFromDB(C, highwayConfig, locationConfig, false);
     graph->maxGroup();
-    graph->addAllRestrictionsFromDB(C, highwayConfig);
+    graph->addAllRestrictionsFromDB(C, highwayConfig, locationConfig);
 //    graph->maxGroup();
 //    graph->edgeBasedMaxGroup();
     graph->createBallTree();
@@ -226,7 +226,7 @@ int main(int argc, char *argv[]){
 
 //    MapConfig mapConfig = highway_level;
 
-    runUsingDBMap(connectionString, mapConfig);
+    runUsingDBMap(connectionString, mapConfig, US_mainland);
 //
 
 //    Graph* graph = new Graph(connectionString);

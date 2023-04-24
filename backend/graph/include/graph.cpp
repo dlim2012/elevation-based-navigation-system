@@ -32,14 +32,14 @@ Graph::Graph(bool populateEdgesField) {
     this->edgeCount = 0;
 }
 
-Graph::Graph(string& connectionString, HighwayConfig highwayConfig) {
+Graph::Graph(string& connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig) {
     this->populateEdgesField = true;
     connection C(connectionString);
-    addAllNodesFromDB(C, highwayConfig, false);
-    addAllEdgesFromDB(C, highwayConfig, false);
-    addAllRestrictionsFromDB(C, highwayConfig);
+    addAllNodesFromDB(C, highwayConfig, locationConfig, false);
+    addAllEdgesFromDB(C, highwayConfig, locationConfig, false);
+    addAllRestrictionsFromDB(C, highwayConfig, locationConfig);
     maxGroup();
-    addAllEdgeGeometriesFromDB(C, highwayConfig);
+    addAllEdgeGeometriesFromDB(C, highwayConfig, locationConfig);
     this->ballTree = createBallTree();
     this->populateEdgesField = false;
     this->edges.clear();
@@ -47,16 +47,16 @@ Graph::Graph(string& connectionString, HighwayConfig highwayConfig) {
 }
 
 Graph::Graph(string& connectionString,
-      HighwayConfig highwayConfig,
+      HighwayConfig highwayConfig, LocationConfig locationConfig,
       unordered_map<long, Geometry*>* sharedEdgesGeometries){
     this->edgeGeometries = sharedEdgesGeometries;
     this->populateEdgesField = true;
     connection C(connectionString);
-    addAllNodesFromDB(C, highwayConfig, false);
-    addAllEdgesFromDB(C, highwayConfig, false);
-    addAllRestrictionsFromDB(C, highwayConfig);
+    addAllNodesFromDB(C, highwayConfig, locationConfig, false);
+    addAllEdgesFromDB(C, highwayConfig, locationConfig, false);
+    addAllRestrictionsFromDB(C, highwayConfig, locationConfig);
     maxGroup();
-    addAllEdgeGeometriesFromDB(C, highwayConfig);
+    addAllEdgeGeometriesFromDB(C, highwayConfig, locationConfig);
     this->ballTree = createBallTree();
     this->populateEdgesField = false;
     this->edges.clear();
@@ -133,9 +133,9 @@ void Graph::addEdge(long id, Node *u, Node *v, int length, int elevation, direct
     }
 }
 
-int Graph::addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream) {
+int Graph::addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream) {
     cout << "Fetching nodes data from DB... ";
-    prepare_nodes_query(C, highwayConfig);
+    prepare_nodes_query(C, highwayConfig, locationConfig);
     pqxx::work w(C);
     if (stream) {
         throw runtime_error("Not Implemented.");
@@ -155,9 +155,9 @@ int Graph::addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConf
     }
 }
 
-int Graph::addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, bool stream) {
+int Graph::addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream) {
     cout << "Fetching edges data from DB... ";
-    prepare_edges_query(C, highwayConfig);
+    prepare_edges_query(C, highwayConfig, locationConfig);
     pqxx::work w(C);
     if (stream) {
         throw runtime_error("Not Implemented.");
@@ -242,13 +242,13 @@ void Graph::addRestrictions(Node::Edge *fromEdge, Node::Edge *toEdge, string &ty
     }
 }
 
-int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig) {
+int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig) {
     // Note: the populateEdgesField has to be true to add restrictions to edges
     if (highwayConfig == cycling || highwayConfig == hiking || highwayConfig == motorway_without_restrictions){
         return 0;
     }
     cout << "Fetching restrictions data from DB... ";
-    prepare_restrictions_query(C, highwayConfig);
+    prepare_restrictions_query(C, highwayConfig, locationConfig);
     if (!this->populateEdgesField) {
         throw runtime_error("The populateEdgesField has to be true to add restrictions to edges.");
     }
@@ -537,9 +537,9 @@ void Graph::maxGroup() {
 
 }
 
-int Graph::addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig){
+int Graph::addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig){
     cout << "Fetching edge geometries... ";
-    prepare_edges_geom_query(C, highwayConfig);
+    prepare_edges_geom_query(C, highwayConfig, locationConfig);
     pqxx::work w(C);
     pqxx::result r = w.exec_prepared("edges_geom");
     long lineCount = 0;
@@ -700,11 +700,12 @@ pair<Node*, Node*> Graph::getTwoNearNodes(int maxDistance){
 
     // retry up to 10 times to search for two nodes in distance between maxDistance/2 and maxDistance
     int n = 10;
-    for (int i=1; i<=n; i++){
+    int n2 = 100;
+    for (int i=1; i<=n || (i <= n2 && node2 == nullptr); i++){
         node = this->getRandomNode();
         pair<double, double> target = {node->lon, node->lat};
         node2 = nearNode(this->ballTree, target, maxDistance);
-        if (distance(node, node2) > maxDistance / 2){
+        if (node2 != nullptr && distance(node, node2) > maxDistance / 2){
             break;
         }
     }

@@ -7,25 +7,14 @@
 
 var host = "http://76.23.247.67:8080";
 // var host = "http://127.0.0.1:18080";
+// var host = "http://localhost:18080";
 
-// brasilia
-// var center = [-15.8264, -47.9245]
-// var zoom = 12
-
-// mass
-// var center = [42.434343, -71.957276]
-// var zoom = 8
-
-// northeast
-// var center = [40.879454, -74.917818]
-
-// us
 var center = [38.237592, -95.209850]
-var zoom = 10
+var zoom = 9
 
 
 const checkStatus = response => {
-    console.log(response)
+    // console.log(response)
     if (response.ok) {
         return response;
     } else if (response.status === 503){
@@ -45,13 +34,6 @@ const checkStatus = response => {
     return Promise.reject(error);
 }
 
-export const getRandomNode = () => {
-    const requestOptions = {
-        method: 'GET'
-    }
-    return fetch(host + "/api/v1/elena/random-node", requestOptions).then(checkStatus);
-}
-
 export const getTwoNearNodes = (json) => {
     const requestOptions = {
         method: 'POST',
@@ -60,32 +42,14 @@ export const getTwoNearNodes = (json) => {
     return fetch(host + "/api/v1/elena/two-near-nodes", requestOptions).then(checkStatus);
 }
 
-export const getShortestPath = (json) => {
+
+export const getPaths = (json) => {
     const requestOptions = {
         method: 'POST',
         body: JSON.stringify(json)
     }
-    return fetch(host + "/api/v1/elena/shortest-path", requestOptions).then(checkStatus);
+    return fetch(host + "/api/v1/elena/paths", requestOptions).then(checkStatus);
 }
-
-export const getElenaMinimizePath = (json) => {
-    const requestOptions = {
-        method: 'POST',
-        body: JSON.stringify(json)
-    }
-    return fetch(host + "/api/v1/elena/elena-minimize", requestOptions).then(checkStatus);
-}
-
-
-export const getElenaMaximizePath = (json) => {
-    const requestOptions = {
-        method: 'POST',
-        body: JSON.stringify(json)
-    }
-    return fetch(host + "/api/v1/elena/elena-maximize", requestOptions).then(checkStatus);
-}
-
-
 
 /* ===========================================================
             Global functions - map
@@ -119,48 +83,9 @@ function getDistance(latlng1, latlng2){
         Math.cos(lat1_rad) * Math.cos(lat2_rad) * Math.cos(lon2_rad - lon1_rad)) * 6371
 }
 
-function onMarkerDragend(event) {
-    var marker = event.target;
-    var prevNode = marker.node.prevNode;
-
-    if ((!useComputationLock || markerNodeList.lockCount === 0) && getAutoSearchOnMarkerDrag()){
-        var graphType;
-        var edgeBased;
-        [graphType, edgeBased] = getGraphType();
-        if (getComputationTime() <= 60
-            && (
-               (
-                   marker.node.nextNode != null &&
-                   !checkDistanceLimit(
-                       getDistance(marker.getLatLng(), marker.node.nextNode.getLatLng()),
-                       edgeBased
-                   )
-               )|| (
-                    prevNode != null &&
-                    !checkDistanceLimit(
-                        getDistance(prevNode.getLatLng(), marker.getLatLng(),
-                            edgeBased
-                    ))
-            ))){
-            ckptView.updateCkptRows();
-            alert ("The maximum distance exceeded. Please change the computation time criteria from the sidebar to increase maximum distance.")
-            return;
-        }
-        marker.node.updatePathsNoLock(graphType, edgeBased, getPathTypes());
-        if (prevNode != null) {
-            prevNode.updatePathsNoLock(graphType, edgeBased, getPathTypes());
-        }
-    } else {
-        if (prevNode != null) {
-            prevNode.addToMapIfUpdated(getPathTypes())
-        }
-        marker.node.addToMapIfUpdated(getPathTypes())
-    }
-    updateAllView();
-}
 
 function checkDistanceLimit(distance, edgeBased){
-    if (getComputationTime() <= 60 && getComputationTime() * 17 * (edgeBased + 1) < distance){
+    if (getComputationTime() <= 60 && getComputationTime() * 30 * (edgeBased + 1) < distance){
         return false;
     }
     return true;
@@ -237,12 +162,20 @@ function getAutoSearchOnMarkerRemove(){
     return document.getElementById('auto-search-on-marker-remove').checked;
 }
 
+function getAutoSearchOnShowPath(){
+    return document.getElementById('auto-search-on-show-path').checked;
+}
+
 function getUnifiedMaxLengthRatio(){
     return document.getElementById('unified-max-length-ratio').checked;
 }
 
 function getSearchPathAgain() {
     return document.getElementById('search-again').checked;
+}
+
+function getShowDistance(){
+    return document.getElementById('show-distance').checked;
 }
 
 function copyDict(json){
@@ -258,7 +191,7 @@ function copyDict(json){
 /* ===========================================================
             Global variables
 ============================================================== */
-var maxNumPaths = 4;
+var maxNumPaths = 3;
 var numPathTypes = 3;
 var allPathTypes = [0, 1, 2];
 var colors = ['red', 'blue', 'green']
@@ -281,6 +214,7 @@ var markerNodeList;
 var ckptView;
 
 var useComputationLock = false;
+var INITIAL_RANDOM_SEARCH_DISTANCE_LIMIT = 100_000_00
 
 /* ===========================================================
             Map components - Model
@@ -302,7 +236,13 @@ class Path {
                                color='', tooltipMessage=''){
         var polyline = L.polyline(
             coordinates,
-            {color: color}
+            {
+                color: color,
+                distanceMarkers: {
+                    lazy: true,
+                    offset: 2000
+                }
+            }
         )
         polyline.bindTooltip(L.tooltip()
             .setContent(
@@ -318,12 +258,14 @@ class Path {
     static emptyPath(){
         var emptyJson = {
             "graph": "none",
-            "lat1": 0.0,
-            "lng1": 0.0,
-            "lat2": 0.0,
-            "lng2": 0.0,
+            "edgeBased": -1,
             "maxLengthRatio": -1.0,
-            "edgeBased": -1
+            "duplicateEdges": -1,
+            "seconds": -1,
+            "lat1": 0.0,
+            "lon1": 0.0,
+            "lat2": 0.0,
+            "lon2": 0.0,
         }
         return new Path(L.polyline([]), 0.0, 0.0, emptyJson)
     }
@@ -370,48 +312,53 @@ class MarkerNode {
         }
     }
 
-    compareJsonBase(json1, json2){
-        for (var key in json1){
-            if (typeof(json1[key]) === "string" && json1[key] !== json2[key]){
+    compareSearchInfo(pathType, searchInfo2){
+        var keys = ["graph", "edgeBased", "lat1", "lon1", "lat2", "lon2"]
+        if (pathType === 1 || pathType === 2){
+            keys.push("maxLengthRatio");
+        }
+        if (pathType === 2){
+            keys.push("duplicateEdges");
+        }
+        var searchInfo1 = this.paths[pathType].searchInfo;
+        for (var key of keys){
+            if (typeof(searchInfo1[key]) === "string"
+                && searchInfo1[key] !== searchInfo2[key]
+            ){
                 return false;
             }
-            if (typeof(json1[key]) === "number" && !this.compareNumber(json1[key], json2[key])){
+            if (typeof(searchInfo1[key]) === "number"
+                && !this.compareNumber(searchInfo1[key], searchInfo2[key])
+            ){
                 return false;
             }
         }
         return true;
     }
+    isUpdated(pathType){
+        if (!getPathTypes().includes(pathType)){
+            return false;
+        }
 
-    compareLocation(json){
-        var latlng1 = this.marker.getLatLng();
         if (this.nextNode == null){
             return false;
         }
-        var latlng2 = this.nextNode.marker.getLatLng();
-        if (!this.compareNumber(latlng1.lat, json["lat1"])){
-            return false;
-        }
-        if (!this.compareNumber(latlng1.lng, json["lon1"])){
-            return false;
-        }
-        if (!this.compareNumber(latlng2.lat, json["lat2"])){
-            return false;
-        }
-        if (!this.compareNumber(latlng2.lng, json["lon2"])){
-            return false;
-        }
-        // todo add criteria for edgeBased
-        return true;
-    }
 
-    isUpdated(pathType, pathInfo){
         var graphType;
         var edgeBased;
         [graphType, edgeBased] = getGraphType();
 
-        if (!this.compareLocation(pathInfo)
+        var pathInfo = this.paths[pathType].searchInfo;
+
+        var latlng1 = this.marker.getLatLng();
+        var latlng2 = this.nextNode.marker.getLatLng();
+        if (!this.compareNumber(latlng1.lat, pathInfo["lat1"])
+            || !this.compareNumber(latlng1.lng, pathInfo["lon1"])
+            || !this.compareNumber(latlng2.lat, pathInfo["lat2"])
+            || !this.compareNumber(latlng2.lng, pathInfo["lon2"])
             || pathInfo["edgeBased"] !== edgeBased
-            || pathInfo["graph"] !== graphType) {
+            || pathInfo["graph"] !== graphType
+        ) {
             return false;
         }
 
@@ -436,256 +383,32 @@ class MarkerNode {
         }
     }
 
-    getUpdated(pathTypes){
-        var res = []
-        for (var i=0; i<pathTypes.length; i++){
-            var pathType = pathTypes[i];
-            var pathInfo = this.paths[pathType].searchInfo
-            res.push(this.isUpdated(pathType, pathInfo))
+    addToMap(pathType){
+        this.paths[pathType].addTo(this.markerNodeList.map);
+        if (getShowDistance()){
+            this.paths[pathType].polyline.addDistanceMarkers();
+        } else {
+            this.paths[pathType].polyline.removeDistanceMarkers();
         }
-        return res;
+    }
+
+    removePath(pathType){
+        this.paths[pathType].removeFrom(this.markerNodeList.map);
     }
     addToMapIfUpdated(pathTypes){
-        var updated = this.getUpdated(pathTypes);
-        var checkedPathTypes = getPathTypes();
         for (var i=0; i<pathTypes.length; i++){
-            if (!checkedPathTypes.includes(pathTypes[i])){
-                continue;
-            }
-            if (updated[i]) {
-                this.paths[pathTypes[i]].addTo(this.markerNodeList.map);
+            var pathType = pathTypes[i];
+            if (this.isUpdated(pathType)) {
+                this.addToMap(pathType)
             } else {
-                this.paths[pathTypes[i]].removeFrom(this.markerNodeList.map);
+                this.paths[pathType].removeFrom(this.markerNodeList.map);
             }
         }
     }
 
-    saveAndAddToMapIfUpdated(pathType, json, data){
-        if (!this.isUpdated(pathType, json)){
-            return;
-        }
-
-        // save the calculated path
-        this.paths[pathType] = Path.pathFromCoordinates(
-            data.GeoJSON.coordinates, data.length, data.elevation, json,
-            colors[pathType], tooltipMessages[pathType]
-        )
-
-        if (getPathTypes().includes(pathType)){
-            return;
-        }
-        this.paths[pathType].addTo(this.markerNodeList.map);
-    }
-
-    shortestPathRequest(graphType, pathType, json){
-        if (this.compareJsonBase(json, this.paths[pathType].searchInfo)){
-            this.paths[pathType].addTo(this.markerNodeList.map);
-            return;
-        }
-        this.paths[pathType].removeFrom(this.markerNodeList.map)
-        this.lock();
-        getShortestPath(json)
-            .then(response => response.json())
-            .then(data => {
-                this.paths[pathType].removeFrom(this.markerNodeList.map)
-                // Check if the node still exists in the list
-                if (this.markerNodeList.getMarkerIndex(this) === -1){
-                    return;
-                }
-
-                this.saveAndAddToMapIfUpdated(pathType, json, data)
-                //
-                // if (!this.isUpdated(pathType, json)){
-                //     return;
-                // }
-                //
-                // // save the calculated path
-                // this.paths[pathType] = Path.pathFromCoordinates(
-                //     data.GeoJSON.coordinates, data.length, data.elevation, json,
-                //     colors[pathType], tooltipMessages[pathType]
-                // )
-                //
-                //
-                //
-                // this.addToMapIfUpdated([pathType])
-                console.log('shortest path: ', (new Date() - this.markerNodeList.startTime) /1000, " seconds");
-            }).catch(error => {
-            console.log(error);
-        }).finally(() =>{
-            this.unlock();
-        });
-    }
-    elenaMinimizePathRequest(graphType, pathType, json){
-        json["maxLengthRatio"] = this.getMaxLengthRatio();
-        if (this.compareJsonBase(json, this.paths[pathType].searchInfo)){
-            this.paths[pathType].addTo(this.markerNodeList.map);
-            return;
-        }
-        this.paths[pathType].removeFrom(this.markerNodeList.map)
-        this.lock();
-        json["maxLength"] = -1;
-
-        getElenaMinimizePath(json)
-            .then(response => response.json())
-            .then(data => {
-                this.paths[pathType].removeFrom(this.markerNodeList.map)
-                // Check if the node still exists in the list
-                if (this.markerNodeList.getMarkerIndex(this) === -1){
-                    return;
-                }
-
-                if (!this.isUpdated(pathType, json)){
-                    return;
-                }
-
-                // save the calculated path
-                this.paths[pathType] = Path.pathFromCoordinates(
-                    data.GeoJSON.coordinates, data.length, data.elevation, json,
-                    colors[pathType], tooltipMessages[pathType]
-                )
-
-                this.addToMapIfUpdated([pathType])
-                console.log('elena-minimize: ', (new Date() - this.markerNodeList.startTime) /1000, " seconds");
-            }).catch(error => {
-                console.log(error);
-            }).finally(() =>{
-                this.unlock();
-            });
-    }
-    elenaMaximizeRequest(graphType, pathType, json){
-        json["maxLengthRatio"] = this.getMaxLengthRatio();
-        json["duplicateEdges"] = getDuplicateEdgePolicy();
-        json["seconds"] = getComputationTime();
-        if (!getSearchPathAgain() && this.compareJsonBase(json, this.paths[pathType].searchInfo)){
-            this.paths[pathType].addTo(this.markerNodeList.map);
-            return;
-        }
-        this.paths[pathType].removeFrom(this.markerNodeList.map)
-        this.lock();
-        json["numProduce"] = 100;
-        json["numMaxSelect"] = 30;
-        json["numEpoch"] = 1000;
-        json["maxLength"] = -1;
-        getElenaMaximizePath(json)
-            .then(response => response.json())
-            .then(data => {
-                this.paths[pathType].removeFrom(this.markerNodeList.map)
-                // Check if the node still exists in the list
-                if (this.markerNodeList.getMarkerIndex(this) === -1){
-                    return;
-                }
-
-                if (!this.isUpdated(pathType, json)){
-                    return;
-                }
-
-                // save the calculated path
-                this.paths[pathType] = Path.pathFromCoordinates(
-                    data.GeoJSON.coordinates, data.length, data.elevation, json,
-                    colors[pathType], tooltipMessages[pathType]
-                )
-
-                this.addToMapIfUpdated([pathType])
-                console.log('elena-maximize: ', (new Date() - this.markerNodeList.startTime) /1000, " seconds");
-            }).catch(error => {
-            console.log(error);
-        }).finally(() =>{
-            this.unlock();
-        });
-
-    }
-
-    lock(){
-        this.markerNodeList.lockCount += 1;
-        ckptView.setLoading(this);
-        searchButton.state('loading');
-    }
-
-    unlock(){
-        this.markerNodeList.lockCount -= 1;
-        ckptView.unsetLoading(this);
-        if (this.markerNodeList.lockCount === 0){
-            searchButton.state('search-route');
-            this.markerNodeList.alertAvailable = true;
-        }
-        updateAllView()
-    }
-
-    updatePathsNoLock(graphType, edgeBased, pathTypes, recalculate=0){
-        if (this.size < 2){
-            return;
-        }
-        this.markerNodeList.startTime = new Date()
-
-        var latlng1 = this.marker.getLatLng();
-        if (this.nextNode == null){
-            return;
-        }
-        var latlng2 = this.nextNode.marker.getLatLng();
-        console.log("distance:", getDistance(this.marker.getLatLng(), this.nextNode.marker.getLatLng()), "km")
-
-        for (var pathType of pathTypes){
-            var json = {
-                graph: graphType,
-                lat1 : latlng1.lat,
-                lon1 : latlng1.lng,
-                lat2 : latlng2.lat,
-                lon2 : latlng2.lng,
-                edgeBased: edgeBased
-            }
-
-            if (pathType === 0){
-                this.shortestPathRequest(graphType, pathType, json)
-            } else if (pathType === 1){
-                this.elenaMinimizePathRequest(graphType, pathType, json);
-            } else if (pathType === 2){
-                this.elenaMaximizeRequest(graphType, pathType, json, recalculate > 0);
-            }
-        }
-    }
-
-    updatePaths(graphType, edgeBased, pathTypes, recalculate=0){
-        if (useComputationLock && this.markerNodeList.lockCount !== 0){
-            return;
-        }
-        this.updatePathsNoLock(graphType, edgeBased, pathTypes, recalculate);
-    }
-
-    updateRelevantPathsNoLock(){
-        var graphType;
-        var edgeBased;
-        [graphType, edgeBased] = getGraphType();
-        var pathTypes = getPathTypes();
-        if (this.nextNode != null){
-            this.updatePathsNoLock(graphType, edgeBased, pathTypes);
-        }
-        if (this.prevNode != null){
-            this.prevNode.updatePathsNoLock(graphType, edgeBased, pathTypes)
-        }
-    }
-    updateRelevantPaths(){
-        if (useComputationLock && this.markerNodeList.lockCount !== 0){
-            return;
-        }
-        this.updateRelevantPathsNoLock();
-    }
-    togglePathType(pathType, show, update=false){
-        if (show) {
-            var graphType;
-            var edgeBased;
-            [graphType, edgeBased] = getGraphType();
-            if (update) {
-                this.updatePathsNoLock(graphType, edgeBased, [pathType])
-            } else {
-                this.paths[pathType].addTo(this.markerNodeList.map);
-            }
-        } else {
-            this.paths[pathType].removeFrom(this.markerNodeList.map);
-        }
-    }
     removeAllPaths(){
-        for (let i=0; i<numPathTypes; i++){
-            this.paths[i].removeFrom(this.markerNodeList.map);
+        for (var pathType of allPathTypes){
+            this.removePath(pathType)
         }
     }
     getLatLng(){
@@ -712,7 +435,6 @@ class MarkerNodeList{
     endMarkerNode;
     numPathTypes;
 
-    startTime;
 
     lastMarkerNodeId;
     lockCount;
@@ -725,7 +447,6 @@ class MarkerNodeList{
         this.lockCount = 0;
         this.alertAvailable = true;
 
-        this.startTime = new Date();
 
         // make end Marker Node
         this.size = 2;
@@ -740,7 +461,6 @@ class MarkerNodeList{
         )
 
         // add start node
-        // this.startMarkerNode = this.addNewMarkerNodeSecondLast(startLatLng, false);
         this.startMarkerNode = new MarkerNode(
             this,
             this.newMarkerNodeId(),
@@ -990,11 +710,21 @@ class MarkerNodeList{
         }
         return markerNode;
     }
+    getMarkerNodeById(id){
+        var markerNode = this.startMarkerNode;
+        while (markerNode != null){
+            if (markerNode.id === id){
+                return markerNode;
+            }
+            markerNode = markerNode.nextNode;
+        }
+        return null;
+    }
     getMarkerIndex(markerNode){
         var node = this.startMarkerNode;
         let index = 0;
         while (node != null){
-            if (node == markerNode){
+            if (node === markerNode){
                 return index;
             }
             index += 1;
@@ -1021,50 +751,192 @@ class MarkerNodeList{
             markerNode = markerNode.nextNode;
         }
     }
-    updateAllPaths(){
+
+    lock(){
+        this.lockCount += 1;
+        ckptView.setLoading(this);
+        searchButton.state('loading');
+    }
+
+    unlock(){
+        this.lockCount -= 1;
+        ckptView.unsetLoading(this);
+        if (this.lockCount === 0){
+            searchButton.state('search-route');
+            this.alertAvailable = true;
+        }
+        updateAllView()
+    }
+
+    updatePathsJson(json, markerNodesToSearch){
+        var startTime = new Date();
+        if (json["nodeId"].length === 0){
+            return;
+        }
+        this.lock();
+        for (var i=0; i<json["nodeId"].length; i++){
+            markerNodesToSearch[i].removePath(json["pathType"][i]);
+        }
+        getPaths(json)
+            .then(response => response.json())
+            .then(data => {
+                if (data.length !== json["nodeId"].length){
+                    console.error("");
+                    return;
+                }
+                for (var i=0; i<data.length; i++){
+                    if (data[i]["nodeId"] !== json["nodeId"][i]){
+                        console.error("");
+                        return;
+                    }
+                }
+
+                for (var i=0; i<data.length; i++){
+                    var _data = data[i];
+                    var pathType = json["pathType"][i];
+
+                    var markerNode = this.getMarkerNodeById(_data["nodeId"]);
+                    if (markerNode == null){
+                        continue;
+                    }
+                    markerNode.removePath(pathType)
+
+                    var searchInfo = {
+                        graph: json["graph"],
+                        edgeBased: json["edgeBased"],
+                        lon1: json["lon1"][i],
+                        lat1: json["lat1"][i],
+                        lon2: json["lon2"][i],
+                        lat2: json["lat2"][i],
+                        maxLengthRatio: json["maxLengthRatio"][i],
+                        duplicateEdges: json["duplicateEdges"],
+                        seconds: json["seconds"]
+                    }
+
+                    if ((pathType !== 2 || !getSearchPathAgain()) &&
+                        markerNode.compareSearchInfo(pathType, searchInfo)){
+                        return;
+                    }
+
+                    // save the calculated path
+                    markerNode.paths[pathType] = Path.pathFromCoordinates(
+                        _data.path.GeoJSON.coordinates, _data.path.length, _data.path.elevation, searchInfo,
+                        colors[pathType], tooltipMessages[pathType]
+                    );
+
+                    markerNode.paths[pathType].searchInfo = searchInfo;
+                    markerNode.addToMap(pathType);
+                }
+                console.log((new Date() - startTime) / 1000, " seconds")
+            })
+            .catch(error => {
+                console.log(error);
+            })
+            .finally(() =>{
+                this.unlock()
+            });
+    }
+
+    updatePaths(markerNodes, pathTypes=getPathTypes()){
         var graphType;
         var edgeBased;
         [graphType, edgeBased] = getGraphType();
 
         // Check max distance
         var maxDistance = 0
-        var markerNode = this.startMarkerNode;
-        for(let i=0; i<this.size-1; i++){
+        for(var markerNode of markerNodes){
+            if (markerNode == null || markerNode.nextNode == null){
+                continue;
+            }
             var distance = getDistance(markerNode.getLatLng(),
                 markerNode.nextNode.getLatLng());
+            console.log("distance: ", distance);
             if (maxDistance < distance){
                 maxDistance = distance;
             }
-            markerNode = markerNode.nextNode;
         }
-        if (!checkDistanceLimit(maxDistance, edgeBased)){
+
+        if (getComputationTime() > 0 && !checkDistanceLimit(maxDistance, edgeBased)){
             alert ("The maximum distance exceeded. Please change the computation time criteria from the sidebar to increase maximum distance.")
             return;
         }
 
+        this.startTime = new Date()
+
         if (!useComputationLock || this.lockCount !== 0) {
-            var markerNode = this.startMarkerNode;
-            for (let i = 0; i < this.size - 1; i++) {
-                markerNode.updatePathsNoLock(graphType, edgeBased, getPathTypes());
-                markerNode = markerNode.nextNode;
+            for (var pathType of pathTypes){
+                var markerNodesToSearch = []
+                var json = {
+                    graph: graphType,
+                    edgeBased: edgeBased,
+                    seconds: getComputationTime(),
+                    duplicateEdges: getDuplicateEdgePolicy(),
+                    nodeId: [],
+                    pathType: [],
+                    lon1: [],
+                    lat1: [],
+                    lon2: [],
+                    lat2: [],
+                    maxLengthRatio: []
+                }
+                for (var markerNode of markerNodes){
+                    if (markerNode == null || markerNode.nextNode == null){
+                        continue;
+                    }
+                    var latlng1 = markerNode.marker.getLatLng();
+                    var latlng2 = markerNode.nextNode.marker.getLatLng();
+
+                    var searchInfo = {
+                        graph: graphType,
+                        edgeBased: edgeBased,
+                        lat1 : latlng1.lat,
+                        lon1 : latlng1.lng,
+                        lat2 : latlng2.lat,
+                        lon2 : latlng2.lng,
+                        maxLengthRatio: markerNode.getMaxLengthRatio(),
+                        duplicateEdges: getDuplicateEdgePolicy(),
+                        seconds: getComputationTime()
+                    }
+
+                    if ((pathType === 2 && getSearchPathAgain())
+                        || !markerNode.compareSearchInfo(pathType, searchInfo)
+                    ){
+                        markerNode.paths[pathType].removeFrom(this.map)
+                        markerNodesToSearch.push(markerNode);
+
+                        json["nodeId"].push(markerNode.id);
+                        json["pathType"].push(pathType);
+                        json["lon1"].push(latlng1.lng);
+                        json["lat1"].push(latlng1.lat);
+                        json["lon2"].push(latlng2.lng);
+                        json["lat2"].push(latlng2.lat);
+                        json["maxLengthRatio"].push(markerNode.getMaxLengthRatio());
+                    }
+                }
+                this.updatePathsJson(json, markerNodesToSearch);
             }
         }
+
     }
-    togglePathType(pathType, show, update=false){
-        var node = this.startMarkerNode;
-        while (node != null){
-            node.togglePathType(pathType, show, update)
-            node = node.nextNode
+
+    updateAllPaths(pathTypes=getPathTypes()){
+        var markerNodes = []
+        var markerNode = this.startMarkerNode;
+        while (markerNode.nextNode != null){
+            markerNodes.push(markerNode);
+            markerNode = markerNode.nextNode;
         }
+        this.updatePaths(markerNodes, pathTypes);
     }
+
     updateAllPathView(){
-        var pathTypes = getPathTypes();
         var node = this.startMarkerNode;
         while (node != null){
-            node.addToMapIfUpdated(pathTypes)
+            node.addToMapIfUpdated(allPathTypes)
             node = node.nextNode
         }
     }
+
     getTotalLengthAndElevationGain(){
         var pathTypes = getPathTypes();
         var pathTypesUpdated = [];
@@ -1077,10 +949,9 @@ class MarkerNodeList{
         }
         var node = this.startMarkerNode;
         while (node != null){
-            var updated = node.getUpdated(pathTypes);
             for (var i=0; i<pathTypes.length; i++){
-                if (updated[i]){
-                    console.log(node.paths[pathTypes[i]])
+                var pathType = pathTypes[i];
+                if (node.isUpdated(pathType, )){
                     pathTypesUpdated[i] += 1;
                     lengths[i] += node.paths[pathTypes[i]].length;
                     elevationGains[i] += node.paths[pathTypes[i]].elevation;
@@ -1092,6 +963,24 @@ class MarkerNodeList{
     }
 }
 
+
+function onMarkerDragend(event) {
+    var marker = event.target;
+    var prevNode = marker.node.prevNode;
+
+    if ((!useComputationLock || markerNodeList.lockCount === 0) && getAutoSearchOnMarkerDrag()){
+        var graphType;
+        var edgeBased;
+        [graphType, edgeBased] = getGraphType();
+        markerNodeList.updatePaths([marker.node, marker.node.prevNode], getPathTypes())
+    } else {
+        if (prevNode != null) {
+            prevNode.addToMapIfUpdated(getPathTypes())
+        }
+        marker.node.addToMapIfUpdated(getPathTypes())
+    }
+    updateAllView();
+}
 
 /* ===========================================================
             Map components - View - Checkpoint Table
@@ -1130,11 +1019,7 @@ class ckptTable{
                 (e) => {
                     var markerNode = this.markerNodeList
                         .getMarkerNode(this.rowIdToMarkerNodeIndex[e.target.parentNode.parentNode.parentNode.id])
-
-                    var graphType;
-                    var edgeBased;
-                    [graphType, edgeBased] = getGraphType();
-                    markerNode.updatePaths(graphType, edgeBased, getPathTypes());
+                    this.markerNodeList.updatePaths([markerNode], getPathTypes());
                 }
             )
 
@@ -1267,7 +1152,7 @@ class ckptTable{
             this.rows[maxNumPaths+1].style.display = 'none';
         }
         if (calculate){
-            markerNode.updateRelevantPaths()
+            markerNodeList.updatePaths([markerNode, markerNode.prevNode], getPathTypes());
         }
     }
 
@@ -1319,13 +1204,23 @@ function onCkptTableRowInputChange(e){
         }
         markerNode.setLatLng(L.latLng(markerNode.getLatLng().lat, value))
     } else if (key === 'r'){
+        value = parseFloat(value)
+        if (value > 5){
+            value = 5.0
+        } else if (value < 1){
+            value = 1.0
+        }
         if (getUnifiedMaxLengthRatio()){
-            markerNodeList.updateMaxLengthRatio(parseFloat(value));
+            markerNodeList.updateMaxLengthRatio(value);
         } else {
-            markerNode.maxLengthRatio = parseFloat(value);
+            markerNode.maxLengthRatio = value;
         }
     }
-    updateAllView()
+
+    updateContextMenu();
+    updateTotalLengthAndElevationGain();
+    markerNodeList.updateMarkerIconsPopupsAndContextMenu();
+    markerNodeList.updateAllPathView();
 }
 
 
@@ -1412,11 +1307,15 @@ function onCkptTableDragend(e){
         }
         markerNodeList.moveMarkerNode(fromIndex, toIndex);
     }
-    console.log(fromIndex, toIndex)
     if (getAutoSearchOnMarkerDrag()){
         if (!useComputationLock || markerNodeList.lockCount === 0) {
-            markerNodeList.getMarkerNode(fromIndex).updateRelevantPathsNoLock();
-            markerNodeList.getMarkerNode(toIndex).updateRelevantPathsNoLock()
+            markerNodeList.updatePaths(
+                [
+                    markerNodeList.getMarkerNode(fromIndex),
+                    markerNodeList.getMarkerNode(toIndex)
+                ],
+                getPathTypes()
+            )
         }
     }
     markerNodeList.updateMarkerIconsPopupsAndContextMenu();
@@ -1426,17 +1325,11 @@ function onCkptTableDragend(e){
 
 
 function removeMarkerNode(index){
-    console.log(index)
     markerNodeList.removeMarkerNode(index);
     markerNodeList.updateMarkerIconsPopupsAndContextMenu();
     if (getAutoSearchOnMarkerRemove()){
         if (index >= 1){
-            var graphType;
-            var edgeBased;
-            [graphType, edgeBased] = getGraphType()
-            markerNodeList.getMarkerNode(index-1).updatePaths(
-                graphType, edgeBased, getPathTypes()
-            )
+            markerNodeList.updatePaths([markerNodeList.getMarkerNode(index-1)], getPathTypes());
         }
     }
     ckptView.updateCkptRows();
@@ -1504,27 +1397,27 @@ function updateAllView(){
 document.getElementById("shortest-length").addEventListener(
     "click",
     () => {
-        var update = !useComputationLock || markerNodeList.lockCount === 0;
-        markerNodeList.togglePathType(
-            0, document.getElementById('shortest-length').checked, update)
+        if (getAutoSearchOnShowPath()) {
+            markerNodeList.updateAllPaths([0]);
+        }
         updateAllView();
     }, false);
 
 document.getElementById("minimize-elevation").addEventListener(
     "click",
      () => {
-         var update = !useComputationLock || markerNodeList.lockCount === 0;
-         markerNodeList.togglePathType(
-             1, document.getElementById('minimize-elevation').checked, update)
+         if (getAutoSearchOnShowPath()){
+            markerNodeList.updateAllPaths([1]);
+         }
          updateAllView();
     },
      false);
 document.getElementById("maximize-elevation").addEventListener(
     "click",
      () => {
-         var update = !useComputationLock || markerNodeList.lockCount === 0;
-         markerNodeList.togglePathType(
-             2, document.getElementById('maximize-elevation').checked, update)
+         if (getAutoSearchOnShowPath()){
+            markerNodeList.updateAllPaths([2]);
+         }
          updateAllView();
     },
     false);
@@ -1532,6 +1425,12 @@ document.getElementById("unified-max-length-ratio").addEventListener(
     "click",
     ()=> {
         ckptView.updateCkptRows();
+    }
+)
+document.getElementById("show-distance").addEventListener(
+    "click",
+    () => {
+        markerNodeList.updateAllPathView()
     }
 )
 
@@ -1641,10 +1540,7 @@ var map = L.map('map', {
             markerNodeList.startMarkerNode.setLatLng(event.latlng)
             updateAllView();
             if (getAutoSearchOnMarkerDrag()){
-                var graphType;
-                var edgeBased;
-                [graphType, edgeBased] = getGraphType();
-                markerNodeList.startMarkerNode.updatePaths(graphType, edgeBased, getPathTypes())
+                markerNodeList.updatePaths([markerNodeList.startMarkerNode], getPathTypes());
             }
         }
     },
@@ -1654,10 +1550,7 @@ var map = L.map('map', {
             markerNodeList.endMarkerNode.setLatLng(event.latlng)
             updateAllView();
             if (getAutoSearchOnMarkerDrag()){
-                var graphType;
-                var edgeBased;
-                [graphType, edgeBased] = getGraphType();
-                markerNodeList.endMarkerNode.prevNode.updatePaths(graphType, edgeBased, getPathTypes());
+                markerNodeList.updatePaths([markerNodeList.endMarkerNode], getPathTypes());
             }
         }
     },
@@ -1694,7 +1587,7 @@ osm.addTo(map);
 var CartoDB_DarkMatter = L.tileLayer(
     'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd',
         maxZoom: 20
     }
@@ -1704,7 +1597,7 @@ CartoDB_DarkMatter.addTo(map);
 var CartoDB_Voyager = L.tileLayer(
     'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd',
         maxZoom: 20
     }
@@ -1757,16 +1650,16 @@ var overlayMaps = {
 
 L.control.layers(baseMaps, overlayMaps, {'collapsed': false}).addTo(map);
 
-new L.cascadeButtons([
-    {icon: 'fas fa-location-dot', ignoreActiveState:true , command: () =>{
-        markerNodeList.endMarkerNode.marker.openPopup();
-        map.panTo(markerNodeList.endMarkerNode.getLatLng());
-     }},
-    {icon: 'fas fa-location-dot', ignoreActiveState:true , command: () =>{
-        markerNodeList.startMarkerNode.marker.openPopup();
-        map.panTo(markerNodeList.startMarkerNode.getLatLng())
-     }},
-], {position:'topright', direction:'horizontal'}).addTo(map);
+// new L.cascadeButtons([
+//     {icon: 'fas fa-location-dot', ignoreActiveState:true , command: () =>{
+//         markerNodeList.endMarkerNode.marker.openPopup();
+//         map.panTo(markerNodeList.endMarkerNode.getLatLng());
+//      }},
+//     {icon: 'fas fa-location-dot', ignoreActiveState:true , command: () =>{
+//         markerNodeList.startMarkerNode.marker.openPopup();
+//         map.panTo(markerNodeList.startMarkerNode.getLatLng())
+//      }},
+// ], {position:'topright', direction:'horizontal'}).addTo(map);
 
 L.control.zoom({
     position: 'topright'
@@ -1793,6 +1686,7 @@ var searchButton = L.easyButton('fas fa-route',
         states: [{
             stateName: 'search-route',
             icon: 'fas fa-route',
+            title: "Search for a path",
             onClick: function (button, map) {
                 button.state('loading')
                 markerNodeList.updateAllPaths()
@@ -1806,6 +1700,7 @@ var searchButton = L.easyButton('fas fa-route',
         {
             stateName: 'loading',
             icon: 'fas fa-spinner',
+            title: "Loading...",
             onClick: function (button, map){
                 // button.state('search-route')
         }
@@ -1841,7 +1736,7 @@ map.on('click', function(e) {
 getTwoNearNodes({
     graph: getGraphType()[0],
     edgeBased: getGraphType()[1],
-    maxDistance: 33_300_00
+    maxDistance: INITIAL_RANDOM_SEARCH_DISTANCE_LIMIT
 })
 .then(response=>response.json())
 .then(data => {

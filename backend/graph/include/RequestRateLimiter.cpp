@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <mutex>
 #include <iostream>
+#include <thread>
+#include <limits.h>
 
 #include "RequestRateLimiter.h"
 
@@ -12,83 +14,150 @@ using namespace std;
 typedef chrono::time_point<std::chrono::high_resolution_clock> time_point;
 
 int duration(time_point start, time_point end){
-    return (int) chrono::duration_cast<chrono::milliseconds>(end - start).count();
+    return (int) chrono::duration_cast<chrono::microseconds>(end - start).count();
 }
 
 
-TimeInterval::TimeInterval(time_point start, time_point end){
+
+Record::Record(const time_point start, const int numLock){
     this->start = start;
-    this->end = end;
-    this->intervalInMilliseconds = duration(start, end);
+    this->numLock = numLock;
+    this->interval = 0;
 }
 
-RequestRateLimiter::RequestRateLimiter(int lockCount){
-    this->lockCount = lockCount;
-}
-
-void RequestRateLimiter::cleanRequests(){
-    time_point now = chrono::high_resolution_clock::now();
-    for (auto it=requests.begin(); it!=requests.end();){
-        deque<TimeInterval>& timeIntervals = it->second;
-        while (!timeIntervals.empty() && duration(timeIntervals.front().end, now) > MEASURE_TIME_1){
-            timeIntervals.pop_front();
-        }
-        if (timeIntervals.empty()){
-            it = requests.erase(it);
-        } else {
-            it++;
-        }
-    }
-}
-
-bool RequestRateLimiter::isAllowed(const string& ipAddress, time_point& now){
-    auto it = requests.find(ipAddress);
-    if (it == requests.end()){
-        return true;
-    }
-    deque<TimeInterval>& timeIntervals = it->second;
-    cout << ipAddress << " " << timeIntervals.size() << endl;
-
-
-    // remove all expired records
-    while (!timeIntervals.empty() && duration(timeIntervals.front().end, now) > MEASURE_TIME_1){
-        timeIntervals.pop_front();
-    }
-
-    int timeUsed = 0;
-    for (TimeInterval& timeInterval: timeIntervals){
-        cout << duration(timeInterval.end, now) << " " << duration(timeInterval.start, now) << endl;
-        if (duration(timeInterval.start, now) > MEASURE_TIME_1){
-            timeUsed += MEASURE_TIME_1 - duration(timeInterval.end, now);
-        } else {
-            timeUsed += timeInterval.intervalInMilliseconds;
-        }
-    }
-
-    return timeUsed < ALLOWED_TIME_1;
-}
-
-void RequestRateLimiter::addRecord(const string& ipAddress, time_point& start, time_point& end){
-    requests[ipAddress].emplace_back(start, end);
-}
-
-bool RequestRateLimiter::acquireLock(){
-    this->lock.lock();
-    cout << this->lockCount << endl;
-    if (this->lockCount == 0){
-        this->lock.unlock();
-        return false;
+int Record::getRecentUsage(time_point now, int time) {
+    if (this->interval != 0){
+        int timeSinceEnd = duration(this->end, now);
+        return max(min(this->interval, time-timeSinceEnd), 0);
     } else {
-        this->lockCount -= 1;
-        this->lock.unlock();
-        return true;
+        return min(duration(this->start, now), time);
     }
+}
+
+void Record::setEndTime(time_point end){
+    this->end = end;
+    this->interval = duration(this->start, this->end);
+}
+
+time_point Record::getEnd(){
+    return this->end;
+}
+
+int Record::getNumLock() {
+    return this->numLock;
+}
+
+int Record::getInterval() {
+    return this->interval;
+}
+
+RequestRateLimiter::RequestRateLimiter(const int lockCount, const int maxRequests){
+    this->initialLockCount = lockCount;
+    this->lockCount = lockCount;
+    this->maxRequests = maxRequests;
+    this->nextRequestId = 0;
 
 }
 
-void RequestRateLimiter::releaseLock(){
+void RequestRateLimiter::repeatCleanRequest(int seconds){
+
+    while (true){
+        this_thread::sleep_for(std::chrono::seconds(seconds));
+
+        this->lock.lock();
+        int newLockCount = this->initialLockCount;
+        time_point now = chrono::high_resolution_clock::now();
+        for (auto it=records.begin(); it != records.end();){
+            unordered_map<int, Record*>& recordsPerIp = it->second;
+            for (auto it2=recordsPerIp.begin(); it2 != recordsPerIp.end();){
+                Record* record = it2->second;
+                if (record->getInterval() == 0){
+                    newLockCount--;
+                    it2++;
+                } else if (duration(record->getEnd(), now) > EXPIRE_TIME){
+                    it2 = recordsPerIp.erase(it2);
+                } else {
+                    it2++;
+                }
+            }
+            if (recordsPerIp.empty()){
+                it = records.erase(it);
+            } else {
+                it++;
+            }
+        }
+        cout << "clean request (lockCount: " << this->lockCount << " -> " << newLockCount << ")" << endl;
+        this->lockCount = newLockCount;
+        this->lock.unlock();
+    }
+}
+
+bool RequestRateLimiter::checkTimeCriteria(const string& ipAddress, const time_point& now){
+
+    auto it = records.find(ipAddress);
+    if (it == records.end()){
+        return true;
+    }
+    unordered_map<int, Record*>& recordsPerIp = it->second;
+
+    for (int i=0; i<NUM_TIME_CONSTRAINTS; i++) {
+        int timeUsed = 0;
+        for (pair<int, Record*> pair1: recordsPerIp){
+            timeUsed += pair1.second->getRecentUsage(now, MEASURE_TIME[i]);
+        }
+        if (timeUsed > ALLOWED_TIME[i]){
+            return false;
+        }
+        cout << (double) timeUsed / 1000000 << " " << (double) MEASURE_TIME[i] / 1000000 << " " << (double) ALLOWED_TIME[i] / 1000000 << endl;
+    }
+
+    return true;
+
+}
+
+int RequestRateLimiter::acquireLock(const std::string &ipAddress, int numLock) {
+
+    // check if num is valid
+    if (numLock > this->maxRequests){
+        cout << "Number of lock being acquired is bigger than the number of max requests." << endl;
+        return -3;
+    }
+
+    time_point now = chrono::high_resolution_clock::now();
+
+    // check for exceeding computation time per IP address
+    if (!checkTimeCriteria(ipAddress, now)){
+        return -2;
+    }
+
+    // Check if lock is available
     this->lock.lock();
-    this->lockCount += 1;
-    cout << this->lockCount << endl;
+    if (this->lockCount < this->maxRequests){
+        this->lock.unlock();
+        return -1;
+    }
+    this->lockCount -= numLock;
+    int requestId = this->nextRequestId;
+    if (this->nextRequestId == INT_MAX){
+        this->nextRequestId = 0;
+    } else {
+        this->nextRequestId++;
+    }
     this->lock.unlock();
+    cout << "lock acquired (requestId: " << requestId << ", IP address: " << ipAddress << ", num: "  << numLock << ") lockCount: " << this->lockCount << endl;
+    this->records[ipAddress][requestId] = new Record(now, numLock);
+
+    return requestId;
+}
+
+
+void RequestRateLimiter::releaseLock(const string& ipAddress, int requestId){
+    time_point now = chrono::high_resolution_clock::now();
+    this->lock.lock();
+    Record* record = records[ipAddress][requestId];
+    record->setEndTime(now);
+    this->lockCount += record->getNumLock();
+    this->lock.unlock();
+    cout << "lock released (requestId: " << requestId << ", IP address: " << ipAddress << ", num: "  << record->getNumLock() << ") lockCount: " << this->lockCount;
+    cout << " interval: " << (double) record->getInterval() / 1000000 << " seconds" << endl;
 }
