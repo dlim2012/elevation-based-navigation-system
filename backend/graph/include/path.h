@@ -43,6 +43,12 @@ public:
         }
     };
 
+    struct smallerElevation {
+        bool operator() (const PathEdges* pathEdges1, const PathEdges* pathEdges2){
+            return pathEdges1->elevation < pathEdges2->elevation;
+        }
+    };
+
     Node* start;
     Node* end;
     vector<PathEdge *> pathEdges;

@@ -33,7 +33,8 @@ add_executable(backend main.cpp
         include/query.h
         include/restApi.h
         include/restApi.cpp
-        include/RequestRateLimiter.h include/RequestRateLimiter.cpp)
+        include/RequestRateLimiter.h
+        include/RequestRateLimiter.cpp)
 
 
 target_link_libraries(backend PUBLIC "${PQXX_LIBRARIES}" -lpthread)

@@ -18,6 +18,8 @@ enum DuplicateEdge {
 // Path* elenaPathFindMinUsingDijkstra
 // PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm
 
+int getMaxWeight(int curMinWeight, double maxWeightRatio);
+
 unordered_map<Node*, int> dijkstraAlgorithm(
         Graph *graph,
         Node *start,
@@ -41,6 +43,17 @@ unordered_map<Node::Edge *, int> edgeBasedDijkstraAlgorithm(
         unordered_map<Node::Edge *, Node::Edge *> *prevEdgeMap,
         Node::Edge *&lastEdge,
         unordered_set<Node::Edge *> *validEdges
+);
+
+Path* pathFromPrevEdgeMap(
+        Node* start,
+        Node* end,
+        unordered_map<Node*, Node::Edge*>& prevEdgeMap
+);
+
+Path* edgeBasedPathFromPrevEdgeMap(
+        Node::Edge* lastEdge,
+        unordered_map<Node::Edge *, Node::Edge *>& prevEdgeMap
 );
 
 Path *dijkstraAlgorithm(
@@ -73,36 +86,33 @@ unordered_set<Node::Edge *> getReachableEdges(
         double maxWeightRatio
 );
 
-Path *elenaPathFindMinUsingDijkstra(
+Path *findMinElevationUsingDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
         double maxWeightRatio
 );
 
-Path *elenaPathFindMinUsingEdgeBasedDijkstra(
+Path *findMinElevationUsingEdgeBasedDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
         double maxWeightRatio
 );
 
-PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
-        Graph *graph, Node *start, Node *end, double maxLengthRatio, size_t numProduce,
-        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
-        int maxMilliseconds, int minEpoch);
+Path* geneticAlgorithm(
+        Graph *graph, Node *start, Node *end, int maxLength,
+        unordered_map<Node*, int>& minLengthStart, unordered_map<Node*, int>& minLengthEnd,
+        PathEdges* shortestPathEdges,
+        size_t numProduce, size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
+        int maxMilliseconds, int minEpoch, bool maximize);
 
-PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
-        Graph *graph,
-        Node *start,
-        Node *end,
-        double maxLengthRatio,
-        size_t numProduce,
-        size_t numMaxSelect,
-        int numEpoch,
-        DuplicateEdge duplicateEdge,
-        int maxMilliseconds,
-        int minEpoch
+Path* edgeBasedGeneticAlgorithm(
+        Graph *graph, Node *start, Node *end, int maxLength,
+        unordered_map<Node::Edge*, int>& minLengthStart, unordered_map<Node::Edge*, int>& minLengthEnd,
+        PathEdges* shortestPathEdges,
+        size_t numProduce, size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
+        int maxMilliseconds, int minEpoch, bool maximize
         );
 
 

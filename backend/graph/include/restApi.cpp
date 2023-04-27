@@ -20,8 +20,11 @@ const int LOCK_COUNT = 16;
 const int MAX_REQUESTS = 4;
 
 const int DEFAULT_NUM_PRODUCE = 100;
-const int DEFAULT_NUM_MAX_SELECT = 30;
+const int DEFAULT_NUM_MAX_SELECT = 25;
 const int DEFAULT_NUM_EPOCH = 1000;
+const int DEFAULT_MIN_EPOCH = 10;
+
+const string CORS_ALLOW = "http://76.23.247.67";
 
 unordered_map<long, Geometry*>* sharedEdgesGeometries;
 
@@ -150,6 +153,7 @@ vector<double> readVectorDouble(const json::rvalue& r, string key, double minVal
 void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1, double lat1, double lon2,
                 double lat2, int pathType, int edgeBased, double maxLengthRatio,
                 DuplicateEdge duplicateEdge, int seconds){
+    cout << "searchPath " << pathType << " " << maxLengthRatio << endl;
     json::wvalue w;
     w["nodeId"] = nodeId;
 
@@ -157,32 +161,86 @@ void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1
     Node *end = graph->nearestNode({lon2, lat2});
 
     Path *path;
+
+
     if (start != end){
-        if (pathType == 0){
-            if (edgeBased == 1) {
-                path = edgeBasedDijkstraAlgorithm(
-                        graph, start, end, Node::Edge::getLength, nullptr);
+        if (edgeBased == 0){
+
+            if (pathType == 0){
+                unordered_map<Node *, Node::Edge *> prevEdgeMap;
+                int curMinWeight = INT_MAX;
+                unordered_map<Node *, int> minWeightEnd = dijkstraAlgorithm(
+                        graph, start, end, curMinWeight, 1.0, Node::Edge::getLength,
+                        true, &prevEdgeMap, nullptr
+                );
+                path = pathFromPrevEdgeMap(start, end, prevEdgeMap);
             } else {
-                path = dijkstraAlgorithm(
-                        graph, start, end, Node::Edge::getLength, nullptr);
+                unordered_map<Node *, Node::Edge *> prevEdgeMap;
+                int curMinWeight = INT_MAX;
+                unordered_map<Node *, int> minWeightEnd = dijkstraAlgorithm(
+                        graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
+                        true, &prevEdgeMap, nullptr
+                );
+                unordered_map<Node*, int> minWeightStart = dijkstraAlgorithm(
+                        graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
+                        false, nullptr, nullptr
+                );
+                int maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
+                if (pathType == 1){
+                    Path *shortestPath = pathFromPrevEdgeMap(start, end, prevEdgeMap);
+                    path = geneticAlgorithm(
+                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
+                            DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
+                            seconds * 900, DEFAULT_MIN_EPOCH, false
+                    );
+                } else {
+                    path = geneticAlgorithm(
+                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, nullptr,
+                            DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
+                            seconds * 900, DEFAULT_MIN_EPOCH, true
+                    );
+                }
             }
-        } else if (pathType == 1){
-            if (edgeBased == 1) {
-                path = elenaPathFindMinUsingEdgeBasedDijkstra(graph, start, end, maxLengthRatio);
-            } else {
-                path = elenaPathFindMinUsingDijkstra(graph, start, end, maxLengthRatio);
-            }
+
         } else {
-            if (edgeBased == 1){
-                path = elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
-                        graph, start, end, maxLengthRatio, DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT,
-                        DEFAULT_NUM_EPOCH, duplicateEdge, seconds * 900, 10
-                )->toPath();
+            if (pathType == 0){
+                unordered_map<Node::Edge *, Node::Edge *> prevEdgeMap;
+                Node::Edge* lastEdge = nullptr;
+                int curMinWeight = INT_MAX;
+                unordered_map<Node::Edge *, int> minWeightEnd = edgeBasedDijkstraAlgorithm(
+                        graph, start, end, curMinWeight, 1.0, Node::Edge::getLength,
+                        true, &prevEdgeMap, lastEdge, nullptr
+                );
+
+                path = edgeBasedPathFromPrevEdgeMap(lastEdge, prevEdgeMap);
             } else {
-                path = elenaPathSearchMaxUsingGeneticAlgorithm(
-                        graph, start, end, maxLengthRatio, DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT,
-                        DEFAULT_NUM_EPOCH, duplicateEdge, seconds * 900, 10
-                )->toPath();
+                unordered_map<Node::Edge *, Node::Edge *> prevEdgeMap;
+                Node::Edge* lastEdge = nullptr;
+                int curMinWeight = INT_MAX;
+                unordered_map<Node::Edge *, int> minWeightEnd = edgeBasedDijkstraAlgorithm(
+                        graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
+                        true, &prevEdgeMap, lastEdge, nullptr
+                );
+
+                unordered_map<Node::Edge*, int> minWeightStart = edgeBasedDijkstraAlgorithm(
+                        graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
+                        false, nullptr, lastEdge, nullptr
+                );
+                int maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
+                if (pathType == 1){
+                    Path *shortestPath = edgeBasedPathFromPrevEdgeMap(lastEdge, prevEdgeMap);
+                    path = edgeBasedGeneticAlgorithm(
+                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
+                            DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
+                            seconds * 900, DEFAULT_MIN_EPOCH, false
+                    );
+                } else {
+                    path = edgeBasedGeneticAlgorithm(
+                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, nullptr,
+                            DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
+                            seconds * 900, DEFAULT_MIN_EPOCH, true
+                    );
+                }
             }
         }
         w["path"] = pathToGeoJson(path, graph->edgeGeometries);
@@ -223,9 +281,7 @@ void runServer(string& connectionString, int port) {
             .headers("X-Custom-Header", "Upgrade-Insecure-Requests")
                 .methods("POST"_method, "GET"_method)
             .prefix("/cors")
-                .origin("http://76.23.247.67")
-//                .origin("http://192.168.1.20")
-//                .origin("http://localhost")
+                .origin(CORS_ALLOW)
             .prefix("/nocors")
                 .ignore();
 
@@ -550,8 +606,7 @@ void runServer(string& connectionString, int port) {
 
 
 
-    // Handle multiple requests at once
-
+    // handle multiple path search separately
     CROW_ROUTE(app, "/api/v1/elena/paths").methods("POST"_method)
             (
                     [](const request &req) {
@@ -638,7 +693,7 @@ void runServer(string& connectionString, int port) {
             );
 
 
-    thread requestCleanUpThread(&RequestRateLimiter::repeatCleanRequest, requestRateLimiter, 3600);
+    thread requestCleanUpThread(&RequestRateLimiter::repeatCleanRequest, requestRateLimiter, 600);
 
     auto _a = app.port(port).multithreaded().run_async();
 

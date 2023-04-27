@@ -49,7 +49,7 @@ PathEdges::PathEdges(Node* start, vector<PathEdge *> &pathEdges, int index) {
 }
 
 PathEdges::PathEdges(Path* path){
-    this->start = path->getStart();
+    this->start = this->end = path->getStart();
     for (Node::Edge* edge: path->edges){
         this->addEdge(edge);
     }
@@ -63,6 +63,9 @@ void PathEdges::addEdge(Node::Edge *edge) {
     this->elevation += edge->elevation;
     this->pathEdges.push_back(new PathEdge(edge, this->length, this->elevation));
     this->end = edge->v;
+    if (this->size() == 1){
+        this->start = edge->u;
+    }
 }
 
 bool PathEdges::empty() const{

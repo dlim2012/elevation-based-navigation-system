@@ -13,7 +13,7 @@ using namespace std;
 
 typedef chrono::time_point<std::chrono::high_resolution_clock> time_point;
 
-int duration(time_point start, time_point end){
+long duration(time_point start, time_point end){
     return (int) chrono::duration_cast<chrono::microseconds>(end - start).count();
 }
 
@@ -25,10 +25,10 @@ Record::Record(const time_point start, const int numLock){
     this->interval = 0;
 }
 
-int Record::getRecentUsage(time_point now, int time) {
+int Record::getRecentUsage(time_point now, long time) {
     if (this->interval != 0){
         int timeSinceEnd = duration(this->end, now);
-        return max(min(this->interval, time-timeSinceEnd), 0);
+        return max(min(this->interval, time-timeSinceEnd), 0L);
     } else {
         return min(duration(this->start, now), time);
     }
@@ -105,10 +105,10 @@ bool RequestRateLimiter::checkTimeCriteria(const string& ipAddress, const time_p
         for (pair<int, Record*> pair1: recordsPerIp){
             timeUsed += pair1.second->getRecentUsage(now, MEASURE_TIME[i]);
         }
+//        cout << (double) timeUsed / 1000000 << " " << (double) MEASURE_TIME[i] / 1000000 << " " << (double) ALLOWED_TIME[i] / 1000000 << endl;
         if (timeUsed > ALLOWED_TIME[i]){
             return false;
         }
-        cout << (double) timeUsed / 1000000 << " " << (double) MEASURE_TIME[i] / 1000000 << " " << (double) ALLOWED_TIME[i] / 1000000 << endl;
     }
 
     return true;

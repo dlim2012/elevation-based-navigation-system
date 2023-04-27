@@ -36,7 +36,7 @@ unordered_map<Node*, int> dijkstraAlgorithm(
     if (graph->nodes.find(start->id) == graph->nodes.end()
         || graph->nodes.find(end->id) == graph->nodes.end()
             ) {
-        throw invalid_argument("nodes do not belong to the same graph");
+        throw invalid_argument("At least one node does not belong to the graph");
     }
 
 
@@ -77,8 +77,9 @@ unordered_map<Node*, int> dijkstraAlgorithm(
         for (pair<const long, Node::Edge *> &pair1: reversed ? candidate.prevNode->reversedEdges
                                                              : candidate.prevNode->edges) {
             curNode = reversed ? pair1.second->u : pair1.second->v;
-            if (validNodes != nullptr && validNodes->find(curNode) == validNodes->end())
+            if (validNodes != nullptr && validNodes->find(curNode) == validNodes->end()) {
                 continue;
+            }
 
             if (visited.find(curNode) != visited.end()){
                 continue;
@@ -103,8 +104,8 @@ unordered_map<Node*, int> dijkstraAlgorithm(
                 }
 
                 // update when arrived at the target
-                if ((reversed && curNode->id == start->id)
-                    || (!reversed && curNode->id == end->id)) {
+                if ((reversed && curNode == start)
+                    || (!reversed && curNode == end)) {
                     if (curMinWeight >= curWeight) {
                         curMinWeight = curWeight;
                         curMaxWeight = getMaxWeight(curMinWeight, maxWeightRatio);
@@ -132,7 +133,7 @@ unordered_map<Node::Edge *, int> edgeBasedDijkstraAlgorithm(
     if (graph->nodes.find(start->id) == graph->nodes.end()
         || graph->nodes.find(end->id) == graph->nodes.end()
             ) {
-        throw invalid_argument("nodes do not belong to the same graph");
+        throw invalid_argument("At least one node does not belong to the graph");
     }
 
     struct Candidate {
@@ -202,8 +203,8 @@ unordered_map<Node::Edge *, int> edgeBasedDijkstraAlgorithm(
                 }
 
                 // update when arrived at the target
-                if ((reversed && curEdge->u->id == start->id)
-                    || (!reversed && curEdge->v->id == end->id)) {
+                if ((reversed && curEdge->u == start)
+                    || (!reversed && curEdge->v == end)) {
                         if (curMinWeight >= curWeight) {
                         curMinWeight = curWeight;
                         curMaxWeight = getMaxWeight(curMinWeight, maxWeightRatio);
@@ -216,6 +217,22 @@ unordered_map<Node::Edge *, int> edgeBasedDijkstraAlgorithm(
     return minWeightEdge;
 }
 
+Path* pathFromPrevEdgeMap(
+        Node* start,
+        Node* end,
+        unordered_map<Node*, Node::Edge*>& prevEdgeMap
+        ){
+
+    Path* path = new Path();
+    Node::Edge* prevEdge;
+    while (start != end) {
+        prevEdge = prevEdgeMap[start];
+        path->addEdge(prevEdge);
+        start = prevEdge->v;
+    }
+    return path;
+}
+
 Path *dijkstraAlgorithm(
         Graph *graph,
         Node *start,
@@ -223,13 +240,11 @@ Path *dijkstraAlgorithm(
         int getWeight(Node::Edge *edge),
         unordered_set<Node *> *validNodes
         ){
-    Path* path = new Path();
     if (start == end) {
-        return path;
+        return new Path();
     }
     unordered_map<Node *, Node::Edge *> prevEdgeMap;
     int curMinWeight = INT_MAX;
-
 
     auto t0 = chrono::high_resolution_clock::now();
     // find the path reversed so that the path can be reconstructed non-reversed
@@ -238,11 +253,18 @@ Path *dijkstraAlgorithm(
     auto t1 = chrono::high_resolution_clock::now();
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
 
-    Node::Edge* prevEdge;
-    while (start != end) {
-        prevEdge = prevEdgeMap[start];
-        path->addEdge(prevEdge);
-        start = prevEdge->v;
+    return pathFromPrevEdgeMap(start, end, prevEdgeMap);
+}
+
+Path* edgeBasedPathFromPrevEdgeMap(
+        Node::Edge* lastEdge,
+        unordered_map<Node::Edge *, Node::Edge *>& prevEdgeMap
+        ){
+    Path* path = new Path();
+
+    while (lastEdge->id != -1) {
+        path->addEdge(lastEdge);
+        lastEdge = prevEdgeMap[lastEdge];
     }
 
     return path;
@@ -255,28 +277,21 @@ Path *edgeBasedDijkstraAlgorithm(
         int getWeight(Node::Edge *edge),
         unordered_set<Node::Edge *> *validEdges
 ) {
-    Path* path = new Path();
     if (start == end) {
-        return path;
+        return new Path();
     }
     unordered_map<Node::Edge *, Node::Edge *> prevEdgeMap;
-    Node::Edge *edge = nullptr;
+    Node::Edge *lastEdge = nullptr;
     int curMinWeight = INT_MAX;
     // find the path reversed so that the path can be reconstructed non-reversed
     unordered_map<Node::Edge *, int> minWeightEdge = edgeBasedDijkstraAlgorithm(
-            graph, start, end, curMinWeight, -1.0, getWeight, true, &prevEdgeMap, edge, validEdges);
+            graph, start, end, curMinWeight, -1.0, getWeight, true, &prevEdgeMap, lastEdge, validEdges);
 
 
-    if (edge == nullptr){
+    if (lastEdge == nullptr){
         throw runtime_error("path not found.");
     }
-
-    while (edge->id != -1) {
-        path->addEdge(edge);
-        edge = prevEdgeMap[edge];
-    }
-
-    return path;
+    return edgeBasedPathFromPrevEdgeMap(lastEdge, prevEdgeMap);
 }
 
 unordered_set<Node*> getReachableNodes(
@@ -306,7 +321,11 @@ unordered_set<Node*> getReachableNodes(
     auto t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
 
     // If all edges are reachable, return empty set to indicate this fact
-    if (minWeightStart.size() == graph->edgeCount + 1){
+    if (minWeightStart.size() == graph->edgeCount + 1
+        && max_element(minWeightStart.begin(), minWeightStart.end(), [] (
+                const pair<Node*, int> p1, const pair<Node*, int> p2){
+            return p1.second < p2.second;
+        })->second <= curMinWeight * maxWeightRatio){
         return validNodes;
     }
 
@@ -317,6 +336,7 @@ unordered_set<Node*> getReachableNodes(
     t = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
 
     int maxWeight = getMaxWeight(curMinWeight, maxWeightRatio);
+
     for (pair<Node *const, int> &pair1: minWeightEnd) {
         auto it = minWeightStart.find(pair1.first);
         if (it == minWeightStart.end())
@@ -355,7 +375,11 @@ unordered_set<Node::Edge *> getReachableEdges(
     }
 
     // If all edges are reachable, return empty set to indicate this fact
-    if (minWeightStart.size() == graph->edgeCount + 1){
+    if (minWeightStart.size() == graph->edgeCount + 1
+        && max_element(minWeightStart.begin(), minWeightStart.end(), [] (
+            const pair<Node::Edge*, int> p1, const pair<Node::Edge*, int> p2){
+        return p1.second < p2.second;
+    })->second <= curMinWeight * maxWeightRatio){
         return validEdges;
     }
 
@@ -383,7 +407,7 @@ unordered_set<Node::Edge *> getReachableEdges(
 }
 
 
-Path *elenaPathFindMinUsingDijkstra(
+Path *findMinElevationUsingDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
@@ -391,13 +415,10 @@ Path *elenaPathFindMinUsingDijkstra(
 ) {
 
     unordered_set<Node *> validNodes = getReachableNodes(graph, start, end, maxWeightRatio);
-    if (validNodes.empty()){
-        return new Path();
-    }
     return dijkstraAlgorithm(graph, start, end, Node::Edge::getElevation, validNodes.empty() ? nullptr : &validNodes);
 }
 
-Path *elenaPathFindMinUsingEdgeBasedDijkstra(
+Path *findMinElevationUsingEdgeBasedDijkstra(
         Graph *graph,
         Node *start,
         Node *end,
@@ -405,9 +426,6 @@ Path *elenaPathFindMinUsingEdgeBasedDijkstra(
 ) {
 
     unordered_set<Node::Edge *> validEdges = getReachableEdges(graph, start, end, maxWeightRatio);
-    if (validEdges.empty()){
-        return new Path();
-    }
     return edgeBasedDijkstraAlgorithm(graph, start, end, Node::Edge::getElevation, validEdges.empty() ? nullptr : &validEdges);
 }
 
@@ -501,86 +519,104 @@ PathEdges* removeDuplicateUndirectedEdge(PathEdges* pathEdges){
     return newPathEdges;
 }
 
+
 PathEdges* mutatePathEdges(
         PathEdges* pathEdges,
+        Node* start,
+        Node* end,
         unordered_map<Node *, int>& minLengthStart,
         unordered_map<Node *, int>& minLengthEnd,
+        unordered_map<Node *, Node::Edge* >& prevEdgeMapMinElevationStart,
+        unordered_map<Node *, Node::Edge *>& prevEdgeMapMinElevationEnd,
         int maxLength,
-        DuplicateEdge duplicateEdge){
+        DuplicateEdge duplicateEdge,
+        bool maximize
+){
     unordered_set<long> visitedEdgeId;
     unordered_set<Node::Edge*> visitedEdge;
     bool useVisitedEdgeId = duplicateEdge == avoidDuplicateUndirectedEdges || duplicateEdge == unallowDuplicateUndirectedEdges;
     bool useVisitedEdge = duplicateEdge == avoidDuplicateDirectedEdges || duplicateEdge == unallowDuplicateDirectedEdges;
-    bool avoid = useVisitedEdgeId || useVisitedEdge;
+    bool useVisited = useVisitedEdgeId || useVisitedEdge;
 
+    // for minimization: choose first edge randomly, then, follow the min elevation path if possible
+    bool firstEdge = true;
     PathEdges* newPathEdges;
     if (rand() & 1) {
-        int targetCutIndex = rand() % (pathEdges->size() + 1);
-        int index = 0;
-        if (avoid){
-            for (PathEdges::PathEdge* pathEdge: pathEdges->pathEdges) {
-                if (index == targetCutIndex
-                    || (duplicateEdge == unallowDuplicateUndirectedEdges
-                        && visitedEdgeId.find(pathEdge->edge->id) != visitedEdgeId.end())
-                    || (duplicateEdge == unallowDuplicateDirectedEdges
-                        && visitedEdge.find(pathEdge->edge) != visitedEdge.end())) {
-                    break;
-                }
-                index++;
-                if (useVisitedEdgeId){
-                    visitedEdgeId.insert(pathEdge->edge->id);
-                } else if (useVisitedEdge){
-                    visitedEdge.insert(pathEdge->edge);
+        if (pathEdges != nullptr) {
+            int targetCutIndex = rand() % (pathEdges->size() + 1);
+            int index = 0;
+            if (useVisited) {
+                for (PathEdges::PathEdge *pathEdge: pathEdges->pathEdges) {
+                    if (index == targetCutIndex
+                        || (duplicateEdge == unallowDuplicateUndirectedEdges
+                            && visitedEdgeId.find(pathEdge->edge->id) != visitedEdgeId.end())
+                        || (duplicateEdge == unallowDuplicateDirectedEdges
+                            && visitedEdge.find(pathEdge->edge) != visitedEdge.end())) {
+                        break;
+                    }
+                    index++;
+                    if (useVisitedEdgeId) {
+                        visitedEdgeId.insert(pathEdge->edge->id);
+                    } else if (useVisitedEdge) {
+                        visitedEdge.insert(pathEdge->edge);
+                    }
                 }
             }
+            newPathEdges = pathEdges->cutBefore(index);
+        } else {
+            newPathEdges = new PathEdges(start);
         }
-        newPathEdges = pathEdges->cutBefore(index);
 
         Node::Edge *prevEdge = newPathEdges->lastEdge();
         while (true) {
-            vector<Node::Edge*> nextEdgeCandidates;
-            vector<Node::Edge*> nextEdgeCandidatesVisited;
-            for (pair<const long, Node::Edge *> pair1: newPathEdges->getEnd()->edges) {
-                Node::Edge *curEdge = pair1.second;
-
-                auto it = minLengthEnd.find(curEdge->v);
-
-                if (it == minLengthEnd.end() || newPathEdges->length + curEdge->length + it->second > maxLength) {
-                    continue;
-                }
-
-                if (duplicateEdge == ignoreDuplicateEdges
-                    || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
-                    || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())){
-                    nextEdgeCandidates.push_back(curEdge);
-                } else if (avoid){
-                    nextEdgeCandidatesVisited.push_back(curEdge);
-                }
-            }
-
-            if (newPathEdges->getEnd() == pathEdges->getEnd()){
-                break;
-            }
-
-            // even if current location is the target location, make moves if possible to maximize elevation gain
-            if (nextEdgeCandidates.empty() && nextEdgeCandidatesVisited.empty()) {
-                if (newPathEdges->getEnd() != pathEdges->getEnd()){
-                    if (duplicateEdge != unallowDuplicateUndirectedEdges
-                            && duplicateEdge != unallowDuplicateDirectedEdges){
-                        throw runtime_error("error"); // temporal error statement
+            bool foundEdge = false;
+            if (!maximize){
+                if (firstEdge){
+                    firstEdge = false;
+                } else {
+                    Node::Edge *curEdge = prevEdgeMapMinElevationEnd[newPathEdges->getEnd()];
+                    if (curEdge != nullptr) {
+                        auto it = minLengthEnd.find(curEdge->v);
+                        if (it != minLengthEnd.end() &&
+                            newPathEdges->length + curEdge->length + it->second <= maxLength) {
+                            prevEdge = curEdge;
+                            foundEdge = true;
+                        }
                     }
-                    return pathEdges;
                 }
-                break;
             }
+            if (!foundEdge){
+                vector<Node::Edge*> nextEdgeCandidates;
+                vector<Node::Edge*> nextEdgeCandidatesVisited;
+                for (pair<const long, Node::Edge *> pair1: newPathEdges->getEnd()->edges) {
+                    Node::Edge *curEdge = pair1.second;
 
-            // visit unvisited node first if not ignoring duplicate edges
-            if (!nextEdgeCandidates.empty()) {
-                prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
-            } else {
-                prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                    auto it = minLengthEnd.find(curEdge->v);
+
+                    if (it == minLengthEnd.end() || newPathEdges->length + curEdge->length + it->second > maxLength) {
+                        continue;
+                    }
+
+                    if (duplicateEdge == ignoreDuplicateEdges
+                        || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
+                        || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())){
+                        nextEdgeCandidates.push_back(curEdge);
+                    } else if (useVisited){
+                        nextEdgeCandidatesVisited.push_back(curEdge);
+                    }
+                }
+
+                if (newPathEdges->getEnd() == end){
+                    break;
+                }
+
+                // visit unvisited node first if not ignoring duplicate edges
+                if (!nextEdgeCandidates.empty()) {
+                    prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
+                } else {
+                    prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                }
             }
-
 
             newPathEdges->addEdge(prevEdge);
             if (useVisitedEdgeId) {
@@ -591,74 +627,84 @@ PathEdges* mutatePathEdges(
 
         }
     } else {
-        int targetCutRIndex = rand() % (pathEdges->size() + 1);
+        vector<Node::Edge *> newEdges;
+        PathEdges::PathEdge *prevPathEdge;
         int rIndex = 0;
-        vector<Node::Edge*> newEdges;
+        if (pathEdges != nullptr) {
+            int targetCutRIndex = rand() % (pathEdges->size() + 1);
 
-        if (avoid) {
-            for (auto it=pathEdges->pathEdges.rbegin(); rIndex < targetCutRIndex ; it++){
-                if (duplicateEdge == unallowDuplicateUndirectedEdges
-                    && visitedEdgeId.find((*it)->edge->id) == visitedEdgeId.end()
-                    || (duplicateEdge == unallowDuplicateDirectedEdges
-                        && visitedEdge.find((*it)->edge) != visitedEdge.end())){
-                    break;
-                }
-                rIndex++;
-                if (useVisitedEdgeId){
-                    visitedEdgeId.insert((*it)->edge->id);
-                } else if (useVisitedEdge){
-                    visitedEdge.insert((*it)->edge);
+            if (useVisited) {
+                for (auto it = pathEdges->pathEdges.rbegin(); rIndex < targetCutRIndex; it++) {
+                    if (duplicateEdge == unallowDuplicateUndirectedEdges
+                        && visitedEdgeId.find((*it)->edge->id) == visitedEdgeId.end()
+                        || (duplicateEdge == unallowDuplicateDirectedEdges
+                            && visitedEdge.find((*it)->edge) != visitedEdge.end())) {
+                        break;
+                    }
+                    rIndex++;
+                    if (useVisitedEdgeId) {
+                        visitedEdgeId.insert((*it)->edge->id);
+                    } else if (useVisitedEdge) {
+                        visitedEdge.insert((*it)->edge);
+                    }
                 }
             }
+            prevPathEdge = (rIndex == pathEdges->size()) ?
+                                                nullptr : pathEdges->at(pathEdges->size() - 1 - rIndex);
+        } else {
+            prevPathEdge = nullptr;
         }
-        PathEdges::PathEdge *prevPathEdge = (rIndex == pathEdges->size()) ?
-                                            nullptr :  pathEdges->at(pathEdges->size()-1-rIndex);
+
         Node::Edge *prevEdge = prevPathEdge == nullptr ? nullptr : prevPathEdge->edge;
         int length = prevPathEdge == nullptr ? 0 : pathEdges->length - prevPathEdge->length + prevEdge->length;
-        Node *prevNode = prevPathEdge == nullptr ? pathEdges->end : prevEdge->u;
+        Node *prevNode = prevPathEdge == nullptr ? end : prevEdge->u;
         while (true) {
-            vector<Node::Edge*> nextEdgeCandidates;
-            vector<Node::Edge*> nextEdgeCandidatesVisited;
-            for (pair<const long, Node::Edge *> pair1: prevNode->reversedEdges) {
-                Node::Edge *curEdge = pair1.second;
-
-                if (Graph::isRestricted(prevEdge, curEdge, true)) {
-                    continue;
+            bool foundEdge = false;
+            if (!maximize){
+                if (firstEdge){
+                    firstEdge = false;
+                } else {
+                    Node::Edge *curEdge = prevEdgeMapMinElevationStart[prevNode];
+                    if (curEdge != nullptr) {
+                        auto it = minLengthStart.find(curEdge->u);
+                        if (it != minLengthStart.end() && length + curEdge->length + it->second <= maxLength) {
+                            prevEdge = curEdge;
+                            foundEdge = true;
+                        }
+                    }
                 }
-
-                auto it = minLengthStart.find(curEdge->u);
-                if (it == minLengthStart.end() || length + + curEdge->length + it->second > maxLength) {
-                    continue;
-                }
-
-
-                if (duplicateEdge == ignoreDuplicateEdges
-                    || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
-                    || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())   ){
-                    nextEdgeCandidates.push_back(curEdge);
-                } else if (avoid){
-                    nextEdgeCandidatesVisited.push_back(curEdge);
-                }
-
             }
+            if (!foundEdge) {
+                vector<Node::Edge *> nextEdgeCandidates;
+                vector<Node::Edge *> nextEdgeCandidatesVisited;
+                for (pair<const long, Node::Edge *> pair1: prevNode->reversedEdges) {
+                    Node::Edge *curEdge = pair1.second;
 
-            if (!newEdges.empty() && newEdges.back()->u == pathEdges->getStart()){
-                break;
-            }
+                    auto it = minLengthStart.find(curEdge->u);
+                    if (it == minLengthStart.end() || length + +curEdge->length + it->second > maxLength) {
+                        continue;
+                    }
 
-            // even if current location is the target location, make moves if possible to maximize elevation gain
-            if (nextEdgeCandidates.empty() && nextEdgeCandidatesVisited.empty()) {
-                if (!newEdges.empty() && newEdges.back()->u != pathEdges->getStart()) {
-                    return pathEdges;
+                    if (duplicateEdge == ignoreDuplicateEdges
+                        || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
+                        || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())) {
+                        nextEdgeCandidates.push_back(curEdge);
+                    } else if (useVisited) {
+                        nextEdgeCandidatesVisited.push_back(curEdge);
+                    }
+
                 }
-                break;
-            }
 
-            // visit unvisited node first if minimizeRevisit == true
-            if (!nextEdgeCandidates.empty()) {
-                prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
-            } else {
-                prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                if (!newEdges.empty() && newEdges.back()->u == start) {
+                    break;
+                }
+
+                // visit unvisited node first if minimizeRevisit == true
+                if (!nextEdgeCandidates.empty()) {
+                    prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
+                } else {
+                    prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                }
             }
 
             newEdges.push_back(prevEdge);
@@ -672,16 +718,18 @@ PathEdges* mutatePathEdges(
         }
 
 
-        newPathEdges = new PathEdges(pathEdges->start);
+        newPathEdges = new PathEdges(start);
         for (auto it=newEdges.rbegin(); it!=newEdges.rend(); it++){
             newPathEdges->addEdge(*it);
         }
-        if (rIndex < pathEdges->size()) {
-            auto it = pathEdges->pathEdges.rbegin() + rIndex;
-            while (true) {
-                newPathEdges->addEdge((*it)->edge);
-                if (it-- == pathEdges->pathEdges.rbegin()) {
-                    break;
+        if (pathEdges != nullptr) {
+            if (rIndex < pathEdges->size()) {
+                auto it = pathEdges->pathEdges.rbegin() + rIndex;
+                while (true) {
+                    newPathEdges->addEdge((*it)->edge);
+                    if (it-- == pathEdges->pathEdges.rbegin()) {
+                        break;
+                    }
                 }
             }
         }
@@ -697,86 +745,102 @@ PathEdges* mutatePathEdges(
 
 PathEdges* edgeBasedMutatePathEdges(
         PathEdges* pathEdges,
+        Node* start,
+        Node* end,
         unordered_map<Node::Edge *, int>& minLengthStart,
         unordered_map<Node::Edge *, int>& minLengthEnd,
+        unordered_map<Node::Edge *, Node::Edge* >& prevEdgeMapMinElevationStart,
+        unordered_map<Node::Edge *, Node::Edge *>& prevEdgeMapMinElevationEnd,
         int maxLength,
-        DuplicateEdge duplicateEdge){
+        DuplicateEdge duplicateEdge,
+        bool maximize
+        ){
     unordered_set<long> visitedEdgeId;
     unordered_set<Node::Edge*> visitedEdge;
     bool useVisitedEdgeId = duplicateEdge == avoidDuplicateUndirectedEdges || duplicateEdge == unallowDuplicateUndirectedEdges;
     bool useVisitedEdge = duplicateEdge == avoidDuplicateDirectedEdges || duplicateEdge == unallowDuplicateDirectedEdges;
-    bool avoid = useVisitedEdgeId || useVisitedEdge;
+    bool useVisited = useVisitedEdgeId || useVisitedEdge;
+
     PathEdges* newPathEdges;
+    bool firstEdge = true;
     if (rand() & 1) {
-        int targetCutIndex = rand() % (pathEdges->size() + 1);
-        int index = 0;
-        if (avoid){
-            for (PathEdges::PathEdge* pathEdge: pathEdges->pathEdges){
-                if (index == targetCutIndex
-                    || (duplicateEdge == unallowDuplicateUndirectedEdges
-                        && visitedEdgeId.find(pathEdge->edge->id) != visitedEdgeId.end())
-                    || (duplicateEdge == unallowDuplicateDirectedEdges
-                        && visitedEdge.find(pathEdge->edge) != visitedEdge.end())) {
-                    break;
-                }
-                index++;
-                if (useVisitedEdgeId){
-                    visitedEdgeId.insert(pathEdge->edge->id);
-                } else if (useVisitedEdge){
-                    visitedEdge.insert(pathEdge->edge);
+        if (pathEdges != nullptr) {
+            int targetCutIndex = rand() % (pathEdges->size() + 1);
+            int index = 0;
+            if (useVisited) {
+                for (PathEdges::PathEdge *pathEdge: pathEdges->pathEdges) {
+                    if (index == targetCutIndex
+                        || (duplicateEdge == unallowDuplicateUndirectedEdges
+                            && visitedEdgeId.find(pathEdge->edge->id) != visitedEdgeId.end())
+                        || (duplicateEdge == unallowDuplicateDirectedEdges
+                            && visitedEdge.find(pathEdge->edge) != visitedEdge.end())) {
+                        break;
+                    }
+                    index++;
+                    if (useVisitedEdgeId) {
+                        visitedEdgeId.insert(pathEdge->edge->id);
+                    } else if (useVisitedEdge) {
+                        visitedEdge.insert(pathEdge->edge);
+                    }
                 }
             }
+            newPathEdges = pathEdges->cutBefore(index);
+        } else {
+            newPathEdges = new PathEdges(start);
         }
-        newPathEdges = pathEdges->cutAfter(index);
 
         Node::Edge *prevEdge = newPathEdges->lastEdge();
         while (true) {
-            vector<Node::Edge*> nextEdgeCandidates;
-            vector<Node::Edge*> nextEdgeCandidatesVisited;
-            for (pair<const long, Node::Edge *> pair1: newPathEdges->getEnd()->edges) {
-                Node::Edge *curEdge = pair1.second;
-
-                if (Graph::isRestricted(prevEdge, curEdge, false)) {
-                    continue;
-                }
-
-                auto it = minLengthEnd.find(curEdge);
-
-
-                if (it == minLengthEnd.end() || newPathEdges->length + it->second > maxLength) {
-                    continue;
-                }
-
-                if (duplicateEdge == ignoreDuplicateEdges
-                    || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
-                    || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())){
-                    nextEdgeCandidates.push_back(curEdge);
-                } else if (avoid){
-                    nextEdgeCandidatesVisited.push_back(curEdge);
-                }
-            }
-
-            if (newPathEdges->getEnd() == pathEdges->getEnd()){
-                break;
-            }
-
-            // even if current location is the target location, make moves if possible to maximize elevation gain
-            if (nextEdgeCandidates.empty() && nextEdgeCandidatesVisited.empty()) {
-                if (newPathEdges->getEnd() != pathEdges->getEnd()){
-                    if (duplicateEdge != unallowDuplicateUndirectedEdges
-                        && duplicateEdge != unallowDuplicateDirectedEdges){
-                        throw runtime_error("error"); // temporal error statement
+            bool foundEdge = false;
+            if (!maximize){
+                if (firstEdge) {
+                    firstEdge = false;
+                } else {
+                    Node::Edge *curEdge = prevEdgeMapMinElevationEnd[newPathEdges->lastEdge()];
+                    if (curEdge != nullptr){
+                        auto it = minLengthEnd.find(curEdge);
+                        if (it != minLengthEnd.end() && newPathEdges->length + it->second <= maxLength) {
+                            prevEdge = curEdge;
+                            foundEdge = true;
+                        }
                     }
-                    return pathEdges;
                 }
-                break;
             }
+            if (!foundEdge) {
+                vector<Node::Edge *> nextEdgeCandidates;
+                vector<Node::Edge *> nextEdgeCandidatesVisited;
+                for (pair<const long, Node::Edge *> pair1: newPathEdges->getEnd()->edges) {
+                    Node::Edge *curEdge = pair1.second;
 
-            // visit unvisited node first if not ignoring duplicate edges
-            if (!nextEdgeCandidates.empty()) {
-                prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
-            } else {
-                prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                    if (Graph::isRestricted(prevEdge, curEdge, false)) {
+                        continue;
+                    }
+
+                    auto it = minLengthEnd.find(curEdge);
+
+                    if (it == minLengthEnd.end() || newPathEdges->length + it->second > maxLength) {
+                        continue;
+                    }
+
+                    if (duplicateEdge == ignoreDuplicateEdges
+                        || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
+                        || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())) {
+                        nextEdgeCandidates.push_back(curEdge);
+                    } else if (useVisited) {
+                        nextEdgeCandidatesVisited.push_back(curEdge);
+                    }
+                }
+
+                if (newPathEdges->getEnd() == end) {
+                    break;
+                }
+
+                // visit unvisited node first if not ignoring duplicate edges
+                if (!nextEdgeCandidates.empty()) {
+                    prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
+                } else {
+                    prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                }
             }
 
             newPathEdges->addEdge(prevEdge);
@@ -787,72 +851,86 @@ PathEdges* edgeBasedMutatePathEdges(
             }
         }
     } else {
-        int targetCutRIndex = rand() % (pathEdges->size() + 1);
         int rIndex = 0;
         vector<Node::Edge*> newEdges;
+        PathEdges::PathEdge *prevPathEdge;
+        if (pathEdges != nullptr) {
+            int targetCutRIndex = rand() % (pathEdges->size() + 1);
 
-        if (avoid) {
-            for (auto it=pathEdges->pathEdges.rbegin(); rIndex < targetCutRIndex ; it++){
-                if (duplicateEdge == unallowDuplicateUndirectedEdges
-                    && visitedEdgeId.find((*it)->edge->id) == visitedEdgeId.end()
-                    || (duplicateEdge == unallowDuplicateDirectedEdges
-                        && visitedEdge.find((*it)->edge) != visitedEdge.end())){
-                    break;
-                }
-                rIndex++;
-                if (useVisitedEdgeId){
-                    visitedEdgeId.insert((*it)->edge->id);
-                } else if (useVisitedEdge){
-                    visitedEdge.insert((*it)->edge);
+            if (useVisited) {
+                for (auto it = pathEdges->pathEdges.rbegin(); rIndex < targetCutRIndex; it++) {
+                    if (duplicateEdge == unallowDuplicateUndirectedEdges
+                        && visitedEdgeId.find((*it)->edge->id) == visitedEdgeId.end()
+                        || (duplicateEdge == unallowDuplicateDirectedEdges
+                            && visitedEdge.find((*it)->edge) != visitedEdge.end())) {
+                        break;
+                    }
+                    rIndex++;
+                    if (useVisitedEdgeId) {
+                        visitedEdgeId.insert((*it)->edge->id);
+                    } else if (useVisitedEdge) {
+                        visitedEdge.insert((*it)->edge);
+                    }
                 }
             }
+            prevPathEdge = (rIndex == pathEdges->size()) ?
+                            nullptr : pathEdges->at(pathEdges->size() - 1 - rIndex);
+        } else {
+            prevPathEdge = nullptr;
         }
-        PathEdges::PathEdge *prevPathEdge = (rIndex == pathEdges->size()) ?
-                                            nullptr :  pathEdges->at(pathEdges->size()-1-rIndex);
         Node::Edge *prevEdge = prevPathEdge == nullptr ? nullptr : prevPathEdge->edge;
         int length = prevPathEdge == nullptr ? 0 : pathEdges->length - prevPathEdge->length + prevEdge->length;
-        Node *prevNode = prevPathEdge == nullptr ? pathEdges->end : prevEdge->u;
+        Node *prevNode = prevPathEdge == nullptr ? end : prevEdge->u;
         while (true) {
-            vector<Node::Edge*> nextEdgeCandidates;
-            vector<Node::Edge*> nextEdgeCandidatesVisited;
-            for (pair<const long, Node::Edge *> pair1: prevNode->reversedEdges) {
-                Node::Edge *curEdge = pair1.second;
-
-                if (Graph::isRestricted(prevEdge, curEdge, true)) {
-                    continue;
-                }
-
-                auto it = minLengthStart.find(curEdge);
-                if (it == minLengthStart.end() || length + it->second > maxLength) {
-                    continue;
-                }
-
-                if (duplicateEdge == ignoreDuplicateEdges
-                    || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
-                    || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())   ){
-                    nextEdgeCandidates.push_back(curEdge);
-                } else if (avoid){
-                    nextEdgeCandidatesVisited.push_back(curEdge);
+            bool foundEdge = false;
+            if (!maximize){
+                if (firstEdge){
+                    firstEdge = false;
+                } else {
+                    Node::Edge *curEdge = prevEdgeMapMinElevationStart[prevEdge];
+                    if (curEdge != nullptr) {
+                        auto it = minLengthStart.find(curEdge);
+                        if (it != minLengthStart.end() && length + it->second <= maxLength) {
+                            prevEdge = curEdge;
+                            foundEdge = true;
+                        }
+                    }
                 }
             }
+            if (!foundEdge) {
+                vector<Node::Edge *> nextEdgeCandidates;
+                vector<Node::Edge *> nextEdgeCandidatesVisited;
+                for (pair<const long, Node::Edge *> pair1: prevNode->reversedEdges) {
+                    Node::Edge *curEdge = pair1.second;
 
-            if (!newEdges.empty() && newEdges.back()->u == pathEdges->getStart()){
-                break;
-            }
+                    if (Graph::isRestricted(prevEdge, curEdge, true)) {
+                        continue;
+                    }
 
-            // even if current location is the target location, make moves if possible to maximize elevation gain
-            if (nextEdgeCandidates.empty() && nextEdgeCandidatesVisited.empty()) {
-                if (!newEdges.empty() && newEdges.back()->u != pathEdges->getStart()) {
-                    return pathEdges;
+                    auto it = minLengthStart.find(curEdge);
+                    if (it == minLengthStart.end() || length + it->second > maxLength) {
+                        continue;
+                    }
+
+                    if (duplicateEdge == ignoreDuplicateEdges
+                        || (useVisitedEdgeId && visitedEdgeId.find(curEdge->id) == visitedEdgeId.end())
+                        || (useVisitedEdge && visitedEdge.find(curEdge) == visitedEdge.end())) {
+                        nextEdgeCandidates.push_back(curEdge);
+                    } else if (useVisited) {
+                        nextEdgeCandidatesVisited.push_back(curEdge);
+                    }
                 }
-                break;
-            }
 
-            // visit unvisited node first if minimizeRevisit == true
-            if (!nextEdgeCandidates.empty()) {
-                prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
-            } else {
-                prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                if (!newEdges.empty() && newEdges.back()->u == start) {
+                    break;
+                }
+
+                // visit unvisited node first if minimizeRevisit == true
+                if (!nextEdgeCandidates.empty()) {
+                    prevEdge = nextEdgeCandidates[rand() % nextEdgeCandidates.size()];
+                } else {
+                    prevEdge = nextEdgeCandidatesVisited[rand() % nextEdgeCandidatesVisited.size()];
+                }
             }
 
             newEdges.push_back(prevEdge);
@@ -866,16 +944,18 @@ PathEdges* edgeBasedMutatePathEdges(
         }
 
 
-        newPathEdges = new PathEdges(pathEdges->start);
+        newPathEdges = new PathEdges(start);
         for (auto it=newEdges.rbegin(); it!=newEdges.rend(); it++){
             newPathEdges->addEdge(*it);
         }
-        if (rIndex < pathEdges->size()) {
-            auto it = pathEdges->pathEdges.rbegin() + rIndex;
-            while (true) {
-                newPathEdges->addEdge((*it)->edge);
-                if (it-- == pathEdges->pathEdges.rbegin()) {
-                    break;
+        if (pathEdges != nullptr) {
+            if (rIndex < pathEdges->size()) {
+                auto it = pathEdges->pathEdges.rbegin() + rIndex;
+                while (true) {
+                    newPathEdges->addEdge((*it)->edge);
+                    if (it-- == pathEdges->pathEdges.rbegin()) {
+                        break;
+                    }
                 }
             }
         }
@@ -889,114 +969,120 @@ PathEdges* edgeBasedMutatePathEdges(
     return newPathEdges;
 }
 
+
+
 unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual> naturalSelection(
-        unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual>& pathEdgesSet, size_t numMaxSelect
+        unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual>& pathEdgesSet, size_t numMaxSelect, bool maximize
         ){
-
-
 
     if (pathEdgesSet.size() < numMaxSelect){
         return pathEdgesSet;
     }
-    priority_queue<PathEdges*, vector<PathEdges*>, PathEdges::biggerElevation> pq;
-    for (auto it: pathEdgesSet){
-        if (pq.size() >= numMaxSelect){
-            if (it->elevation > pq.top()->elevation){
-                pq.pop();
+
+    unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual> res;
+    if (maximize) {
+        priority_queue<PathEdges *, vector<PathEdges *>, PathEdges::biggerElevation> pq;
+        for (auto it: pathEdgesSet) {
+            if (pq.size() >= numMaxSelect) {
+                if (it->elevation > pq.top()->elevation) {
+                    pq.pop();
+                    pq.push(it);
+                }
+            } else {
                 pq.push(it);
             }
-        } else {
-            pq.push(it);
+        }
+        while (!pq.empty()){
+            res.insert(pq.top());
+            pq.pop();
+        }
+    } else {
+        priority_queue<PathEdges *, vector<PathEdges *>, PathEdges::smallerElevation> pq;
+        for (auto it: pathEdgesSet) {
+            if (pq.size() >= numMaxSelect) {
+                if (it->elevation < pq.top()->elevation) {
+                    pq.pop();
+                    pq.push(it);
+                }
+            } else {
+                pq.push(it);
+            }
+        }
+        while (!pq.empty()){
+            res.insert(pq.top());
+            pq.pop();
         }
     }
-    unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual> res;
-    while (!pq.empty()){
-        res.insert(pq.top());
-        pq.pop();
-    }
+
     return res;
 }
 
-int weightedSelection(int numChoices, default_random_engine rng){
-    int totalWeights = 0;
-    for (int i=0; i<numChoices; i++){
-        totalWeights += (i+1) * (i+1);
-    }
-    uniform_int_distribution<int> distribution(0, totalWeights-1);
-    int r = distribution(rng);
-    int i = 1;
-    while (r >= 0){
-        r -= i * i;
-        i++;
-    }
-    return numChoices - i + 1;
 
-}
-
-PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
-        Graph *graph, Node *start, Node *end, double maxLengthRatio, size_t numProduce,
+Path* geneticAlgorithm(
+        Graph *graph, Node *start, Node *end, int maxLength,
+        unordered_map<Node*, int>& minLengthStart, unordered_map<Node*, int>& minLengthEnd,
+        PathEdges* shortestPathEdges,
+        size_t numProduce,
         size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
-        int maxMilliseconds, int minEpoch){
+        int maxMilliseconds, int minEpoch, bool maximize) {
 
     auto t0 = chrono::high_resolution_clock::now();
 
-    // 1) minWeightEnd and the shortest path
+    PathEdges *pathEdges;
+    unordered_map<Node *, Node::Edge* > prevEdgeMapMinElevationStart;
+    unordered_map<Node *, Node::Edge *> prevEdgeMapMinElevationEnd;
+    if (!maximize){
+        unordered_set<Node*> validNodes;
+        for (pair<Node *const, int> &pair1: minLengthEnd) {
+            auto it = minLengthStart.find(pair1.first);
+            if (it == minLengthStart.end())
+                continue;
+            if (pair1.second + it->second > maxLength)
+                continue;
+            validNodes.insert(pair1.first);
+        }
+        int curMinWeight = INT_MAX;
 
-    int curMinWeight = INT_MAX;
-
-    unordered_map<Node*, int> minWeightStart = dijkstraAlgorithm(
-            graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
-            false, nullptr, nullptr
-    );
-
-    unordered_map<Node *, Node::Edge *> prevEdgeMap;
-    unordered_map<Node *, int> minWeightEnd = dijkstraAlgorithm(
-            graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
-            true, &prevEdgeMap, nullptr
-    );
-
-    // Find the shortest path
-    PathEdges* pathEdges = new PathEdges(start);
-    Node* lastNode = start;
-    Node::Edge* lastEdge;
-    while (lastNode != end) {
-        lastEdge = prevEdgeMap[lastNode];
-        pathEdges->addEdge(lastEdge);
-        lastNode = lastEdge->v;
+        auto t0 = chrono::high_resolution_clock::now();
+        // find the path reversed so that the path can be reconstructed non-reversed
+        dijkstraAlgorithm(
+                graph, start, end, curMinWeight, -1.0, Node::Edge::getElevation, true, &prevEdgeMapMinElevationEnd, &validNodes);
+        Path* dijkstraPath = pathFromPrevEdgeMap(start, end, prevEdgeMapMinElevationEnd);
+        if (dijkstraPath->length <= maxLength){
+            return pathFromPrevEdgeMap(start, end, prevEdgeMapMinElevationEnd);
+        }
+        dijkstraAlgorithm(
+                graph, start, end, curMinWeight, -1.0, Node::Edge::getElevation, false, &prevEdgeMapMinElevationStart, &validNodes);
     }
 
-    int maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
-
-    // First generation: mutations from the shortest path
-    unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual> pathEdgesSet;
-    for (size_t i=0; i<numProduce; i++){
+    // first generation: optional shortestPathEdges and random paths
+    unordered_set<PathEdges *, pathEdgesHash, pathEdgesEqual> pathEdgesSet;
+    if (shortestPathEdges != nullptr){
+        pathEdgesSet.insert(shortestPathEdges);
+    }
+    for (size_t i = 0; i < numProduce; i++) {
         pathEdgesSet.insert(
-                mutatePathEdges(pathEdges, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
+                mutatePathEdges(nullptr, start, end, minLengthStart, minLengthEnd,
+                                prevEdgeMapMinElevationStart, prevEdgeMapMinElevationEnd, maxLength, duplicateEdge, maximize));
     }
 
-    for (int epoch=0; epoch < numEpoch; epoch++){
-//
-//        cout << "====================================" <<  endl;
-//        for (PathEdges* pathEdges: pathEdgesSet){
-//            cout << pathEdges->elevation << " " << pathEdges->length << " " << maxWeight << endl;
-//        }
-//        cout << "====================================;" <<  endl;
+    for (int epoch = 0; epoch < numEpoch; epoch++) {
 
         // natural selection
-        pathEdgesSet = naturalSelection(pathEdgesSet, numMaxSelect);
+        pathEdgesSet = naturalSelection(pathEdgesSet, numMaxSelect, maximize);
 
 
         // prepare for crossovers: search for intersections
-        unordered_map<Node::Edge*, unordered_map<PathEdges*, vector<size_t>>> intersections;
-        for (auto it: pathEdgesSet){
+        unordered_map<Node::Edge *, unordered_map<PathEdges *, vector<size_t>>> intersections;
+        for (auto it: pathEdgesSet) {
             size_t index = 0;
-            for (PathEdges::PathEdge* pathEdge: it->pathEdges){
+            for (PathEdges::PathEdge *pathEdge: it->pathEdges) {
                 intersections[pathEdge->edge][it].push_back(index++);
             }
         }
 
-        for (auto it=intersections.begin(); it!=intersections.end();){
-            if (it->second.size() < 2){
+        for (auto it = intersections.begin(); it != intersections.end();) {
+            if (it->second.size() < 2) {
                 it = intersections.erase(it);
             } else {
                 it++;
@@ -1005,15 +1091,17 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
 
         // 4) crossovers: based on intersections find valid paths, generate mutants of each new crossovers with m% probability
         // Choose an intersected edge
-        for (int produce=0; produce<numProduce; produce++) {
+        for (int produce = 0; produce < numProduce; produce++) {
             auto intersectionsIt = intersections.begin();
-            if (intersections.size() == 0){
+            if (intersections.size() == 0) {
                 auto it = pathEdgesSet.begin();
                 advance(it, rand() % pathEdgesSet.size());
                 pathEdgesSet.insert(
-                        mutatePathEdges(*it, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
+                        mutatePathEdges(*it, start, end, minLengthStart, minLengthEnd,
+                                        prevEdgeMapMinElevationStart, prevEdgeMapMinElevationEnd,
+                                        maxLength, duplicateEdge, maximize));
                 continue;
-            }
+             }
 
             advance(intersectionsIt, (rand() % intersections.size()));
             unordered_map<PathEdges *, vector<size_t>> &choices = intersectionsIt->second;
@@ -1030,33 +1118,12 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
 
             // use the second choice as the prefix if the first choice does not give any path within the length limit
             if (pathEdges1->at(choicesIt1->second.front())->length
-                + pathEdges2->length - pathEdges2->at(choicesIt2->second.back())->length > maxWeight) {
+                + pathEdges2->length - pathEdges2->at(choicesIt2->second.back())->length > maxLength) {
                 swap(pathEdges1, pathEdges2);
                 swap(choicesIt1, choicesIt2);
             }
-            vector<size_t>& indices1 = choicesIt1->second;
-            vector<size_t>& indices2 = choicesIt2->second;
-
-//            // find the maximum value for index1 and randomly choose one
-//            int maxIndex1 = 0;
-//            for (int i=1; i<indices1.size(); i++){
-//                if (pathEdges1->at(indices1[i])->length + pathEdges2->length - pathEdges2->at(indices2.back())->length > maxWeight)
-//                    break;
-//                maxIndex1 = i;
-//            }
-//            index1 = rand() % (maxIndex1 + 1);
-////            index1 = weightedSelection(maxIndex1 + 1, graph->rng);
-//
-//            // find the minimum value for index2 and randomly choose one
-//            int minIndex2 = indices2.size()-1;
-//            for (int i=indices2.size()-2; i>=0; i--){
-//                if (pathEdges1->at(indices1[index1])->length + pathEdges2->length - pathEdges2->at(indices2[i])->length > maxWeight)
-//                    break;
-//                minIndex2 = i;
-//            }
-//            index2 = (rand() % (int) (indices2.size() - minIndex2)) + minIndex2;
-
-//            index2 = indices2.size()-1 - weightedSelection(indices2.size()-minIndex2, graph->rng);
+            vector<size_t> &indices1 = choicesIt1->second;
+            vector<size_t> &indices2 = choicesIt2->second;
 
             index1 = indices1.front();
             index2 = indices2.back();
@@ -1067,7 +1134,7 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
             if (index2 + 1 < pathEdges2->size()) {
 
                 // check if restricted
-                Node::Edge* edge = pathEdges1->at(index1)->edge;
+                Node::Edge *edge = pathEdges1->at(index1)->edge;
                 if (edge->v->restrictions != nullptr) {
                     auto restrictionsIt = edge->v->restrictions->find(edge);
                     if (restrictionsIt != edge->v->restrictions->end()) {
@@ -1087,73 +1154,100 @@ PathEdges* elenaPathSearchMaxUsingGeneticAlgorithm(
                 }
             }
 
+            if (maximize || rand() & 1) {
+                pathEdgesSet.insert(
+                        mutatePathEdges(pathEdges, start, end, minLengthStart, minLengthEnd,
+                                        prevEdgeMapMinElevationStart, prevEdgeMapMinElevationEnd,
+                                        maxLength, duplicateEdge, maximize));
+            } else {
+                pathEdgesSet.insert(
+                        pathEdges);
+            }
 
-
-            pathEdgesSet.insert(
-                    mutatePathEdges(pathEdges, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
         }
+
         if (epoch >= minEpoch && chrono::duration_cast<chrono::milliseconds>(
-                chrono::high_resolution_clock::now() - t0).count() > maxMilliseconds){
+                chrono::high_resolution_clock::now() - t0).count() > maxMilliseconds) {
             break;
         }
     }
 
-    int maxElevation = -1.0;
-    for (auto it: pathEdgesSet){
-        if (it->getElevation() > maxElevation){
-            maxElevation = it->getElevation();
-            pathEdges = it;
+    if (maximize) {
+        int maxElevation = -1;
+        for (auto it: pathEdgesSet) {
+            if (it->getElevation() > maxElevation) {
+                maxElevation = it->getElevation();
+                pathEdges = it;
+            }
+        }
+    } else {
+        int minElevation = INT_MAX;
+        for (auto it: pathEdgesSet) {
+            if (it->getElevation() < minElevation) {
+                minElevation = it->getElevation();
+                pathEdges = it;
+            }
         }
     }
-    return pathEdges;
+    return pathEdges->toPath();
 
 }
 
-PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
-        Graph *graph, Node *start, Node *end, double maxLengthRatio, size_t numProduce,
-        size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
-        int maxMilliseconds, int minEpoch){
+Path* edgeBasedGeneticAlgorithm(
+        Graph *graph, Node *start, Node *end, int maxLength,
+        unordered_map<Node::Edge*, int>& minLengthStart, unordered_map<Node::Edge*, int>& minLengthEnd,
+        PathEdges* shortestPathEdges,
+        size_t numProduce, size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
+        int maxMilliseconds, int minEpoch, bool maximize
+){
 
     auto t0 = chrono::high_resolution_clock::now();
-    // 1) minWeightEnd and the shortest path
 
-    int curMinWeight = INT_MAX;
-    Node::Edge *lastEdge = nullptr;
+    PathEdges* pathEdges;
+    unordered_map<Node::Edge *, Node::Edge *> prevEdgeMapMinElevationStart;
+    unordered_map<Node::Edge *, Node::Edge *> prevEdgeMapMinElevationEnd;
 
-    unordered_map<Node::Edge *, int> minWeightStart = edgeBasedDijkstraAlgorithm(
-            graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
-            false, nullptr, lastEdge, nullptr
-    );
+    if (!maximize){
+        unordered_set<Node::Edge*> validEdges;
+        for (pair<Node::Edge *const, int> &pair1: minLengthEnd) {
+            auto it = minLengthStart.find(pair1.first);
+            if (it == minLengthStart.end())
+                continue;
+            if (pair1.second + it->second > maxLength)
+                continue;
+            validEdges.insert(pair1.first);
+        }
 
-    unordered_map<Node::Edge *, Node::Edge *> prevEdgeMap;
-    unordered_map<Node::Edge *, int> minWeightEnd = edgeBasedDijkstraAlgorithm(
-            graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
-            true, &prevEdgeMap, lastEdge, nullptr
-    );
-    if (lastEdge == nullptr){
-        throw runtime_error("path not found.");
+        Node::Edge *lastEdge = nullptr;
+        int curMinWeight = INT_MAX;
+        // find the path reversed so that the path can be reconstructed non-reversed
+        edgeBasedDijkstraAlgorithm(
+                graph, start, end, curMinWeight, -1.0, Node::Edge::getElevation, true, &prevEdgeMapMinElevationEnd, lastEdge, &validEdges);
+        Path* dijkstraPath = edgeBasedPathFromPrevEdgeMap(lastEdge, prevEdgeMapMinElevationEnd);
+        if (dijkstraPath->length < maxLength){
+            return dijkstraPath;
+        }
+        edgeBasedDijkstraAlgorithm(
+                graph, start, end, curMinWeight, -1.0, Node::Edge::getElevation, false, &prevEdgeMapMinElevationStart, lastEdge, &validEdges);
     }
 
-    // Find the shortest path
-    PathEdges* pathEdges = new PathEdges(start);
-    while (lastEdge->id != -1) {
-        pathEdges->addEdge(lastEdge);
-        lastEdge = prevEdgeMap[lastEdge];
-    }
-
-    int maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
-
-    // First generation: mutations from the shortest path
+    // First generation
     unordered_set<PathEdges*, pathEdgesHash, pathEdgesEqual> pathEdgesSet;
+    if (shortestPathEdges != nullptr) {
+        pathEdgesSet.insert(shortestPathEdges);
+    }
     for (size_t i=0; i<numProduce; i++){
         pathEdgesSet.insert(
-                edgeBasedMutatePathEdges(pathEdges, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
+                edgeBasedMutatePathEdges(nullptr, start, end, minLengthStart, minLengthEnd,
+                                         prevEdgeMapMinElevationStart, prevEdgeMapMinElevationEnd,
+                                         maxLength, duplicateEdge, maximize)
+                );
     }
 
     for (int epoch=0; epoch < numEpoch; epoch++){
 
         // natural selection
-        pathEdgesSet = naturalSelection(pathEdgesSet, numMaxSelect);
+        pathEdgesSet = naturalSelection(pathEdgesSet, numMaxSelect, maximize);
 
 
         // prepare for crossovers: search for intersections
@@ -1177,11 +1271,13 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
         // Choose an intersected edge
         for (int produce=0; produce<numProduce; produce++) {
             auto intersectionsIt = intersections.begin();
-            if (intersections.size() == 0 || rand() % 4 < 2){
+            if (intersections.size() == 0){
                 auto it = pathEdgesSet.begin();
                 advance(it, rand() % pathEdgesSet.size());
                 pathEdgesSet.insert(
-                        edgeBasedMutatePathEdges(*it, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
+                        edgeBasedMutatePathEdges(*it, start, end, minLengthStart, minLengthEnd,
+                                                 prevEdgeMapMinElevationStart, prevEdgeMapMinElevationEnd,
+                                                 maxLength, duplicateEdge, maximize));
                 continue;
             }
 
@@ -1200,33 +1296,12 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
 
             // use the second choice as the prefix if the first choice does not give any path within the length limit
             if (pathEdges1->at(choicesIt1->second.front())->length
-                + pathEdges2->length - pathEdges2->at(choicesIt2->second.back())->length > maxWeight) {
+                + pathEdges2->length - pathEdges2->at(choicesIt2->second.back())->length > maxLength) {
                 swap(pathEdges1, pathEdges2);
                 swap(choicesIt1, choicesIt2);
             }
             vector<size_t>& indices1 = choicesIt1->second;
             vector<size_t>& indices2 = choicesIt2->second;
-
-//            // find the maximum value for index1 and randomly choose one
-//            int maxIndex1 = 0;
-//            for (int i=1; i<indices1.size(); i++){
-//                if (pathEdges1->at(indices1[i])->length + pathEdges2->length - pathEdges2->at(indices2.back())->length > maxWeight)
-//                    break;
-//                maxIndex1 = i;
-//            }
-//            index1 = rand() % (maxIndex1 + 1);
-////            index1 = weightedSelection(maxIndex1 + 1, graph->rng);
-//
-//            // find the minimum value for index2 and randomly choose one
-//            int minIndex2 = indices2.size()-1;
-//            for (int i=indices2.size()-2; i>=0; i--){
-//                if (pathEdges1->at(indices1[index1])->length + pathEdges2->length - pathEdges2->at(indices2[i])->length > maxWeight)
-//                    break;
-//                minIndex2 = i;
-//            }
-//            index2 = (rand() % (int) (indices2.size() - minIndex2)) + minIndex2;
-
-//            index2 = indices2.size()-1 - weightedSelection(indices2.size()-minIndex2, graph->rng);
 
             index1 = indices1.front();
             index2 = indices2.back();
@@ -1257,8 +1332,14 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
                 }
             }
 
-            pathEdgesSet.insert(
-                    edgeBasedMutatePathEdges(pathEdges, minWeightStart, minWeightEnd, maxWeight, duplicateEdge));
+            if (maximize || rand() & 1) {
+                pathEdgesSet.insert(
+                        edgeBasedMutatePathEdges(pathEdges, start, end, minLengthStart, minLengthEnd,
+                                                 prevEdgeMapMinElevationStart, prevEdgeMapMinElevationEnd,
+                                                 maxLength, duplicateEdge, maximize));
+           } else {
+                pathEdgesSet.insert(pathEdges);
+            }
         }
 
         if (epoch >= minEpoch && chrono::duration_cast<chrono::milliseconds>(
@@ -1267,13 +1348,24 @@ PathEdges* elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
         }
     }
 
-    int maxElevation = -1.0;
-    for (auto it: pathEdgesSet){
-        if (it->getElevation() > maxElevation){
-            maxElevation = it->getElevation();
-            pathEdges = it;
+
+    if (maximize) {
+        int maxElevation = -1;
+        for (auto it: pathEdgesSet) {
+            if (it->getElevation() > maxElevation) {
+                maxElevation = it->getElevation();
+                pathEdges = it;
+            }
+        }
+    } else {
+        int minElevation = INT_MAX;
+        for (auto it: pathEdgesSet) {
+            if (it->getElevation() < minElevation) {
+                minElevation = it->getElevation();
+                pathEdges = it;
+            }
         }
     }
-    return pathEdges;
+    return pathEdges->toPath();
 
 }

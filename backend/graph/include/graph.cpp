@@ -113,7 +113,7 @@ void Graph::addEdge(long id, Node *u, Node *v, int length, int elevation, direct
         edge1 = nullptr;
     }
 
-    if (direction == bidirectional || direction == onewayReversed) {
+    if (direction == bidirectional) {
         if (v->edges.find(id) == v->edges.end()){
             this->edgeCount++;
         }
@@ -658,7 +658,6 @@ Node *Graph::nearestNode(pair<double, double> target) {
 }
 
 Node* Graph::getRandomNode() {
-    cout << this->nodes.size() << endl;
     auto it = this->nodes.begin();
     int random = rand() % this->nodes.size();
     std::advance(it, random);
@@ -698,14 +697,15 @@ Node* nearNode(BallTreeNode *ballTreeNode, pair<double, double> &target, int max
 pair<Node*, Node*> Graph::getTwoNearNodes(int maxDistance){
     Node *node, *node2;
 
-    // retry up to 10 times to search for two nodes in distance between maxDistance/2 and maxDistance
-    int n = 10;
+    // retry up to n times to search for two nodes in distance within good range
+    // retry up to n2 times before giving same node
+    int n = 20;
     int n2 = 100;
-    for (int i=1; i<=n || (i <= n2 && node2 == nullptr); i++){
+    for (int i=1; i<=n || (i <= n2 && (node2 == nullptr || node2 == node)); i++){
         node = this->getRandomNode();
         pair<double, double> target = {node->lon, node->lat};
         node2 = nearNode(this->ballTree, target, maxDistance);
-        if (node2 != nullptr && distance(node, node2) > maxDistance / 2){
+        if (node2 != nullptr && distance(node, node2) > maxDistance * 2 / 3){
             break;
         }
     }

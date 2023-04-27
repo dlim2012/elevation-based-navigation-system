@@ -4,6 +4,13 @@
 
 using namespace std;
 
+enum direction {
+    bidirectional,
+    oneway,
+    onewayReversed,
+    none
+};
+
 class Node {
 
 public:
