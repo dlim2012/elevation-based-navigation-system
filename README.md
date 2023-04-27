@@ -40,9 +40,6 @@ A navigation system that maximizes or minimizes elevation gain within x% of the 
     <a href="https://carto.com/basemaps/">Carto maps</a>,
     <a href="https://developers.google.com/maps/documentation/tile">Google maps</a><br>
 
-## Path search algorithms</b><br>
--Minimize elevation gain: Dijkstra's algorithm (optimal)<br>
--Maximizing elevation gain: a genetic algorithm (metaheuristic)<br>
 
 
 
