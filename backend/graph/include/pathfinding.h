@@ -5,11 +5,9 @@
 
 enum DuplicateEdge {
     ignoreDuplicateEdges=0,
-    avoidDuplicateDirectedEdges=1,
-    unallowDuplicateDirectedEdges=2,
-    avoidDuplicateUndirectedEdges=3,
-    unallowDuplicateUndirectedEdges=4,
-    duplicateEdgeEnumCount = 5
+    minimizeDuplicateDirectedEdges=1,
+    minimizeDuplicateUndirectedEdges=2,
+    duplicateEdgeEnumCount = 3
 };
 
 // unordered_map<Node*, int> dijkstraAlgorithm
@@ -103,14 +101,14 @@ Path *findMinElevationUsingEdgeBasedDijkstra(
 Path* geneticAlgorithm(
         Graph *graph, Node *start, Node *end, int maxLength,
         unordered_map<Node*, int>& minLengthStart, unordered_map<Node*, int>& minLengthEnd,
-        PathEdges* shortestPathEdges,
+        Path* shortestPath,
         size_t numProduce, size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
         int maxMilliseconds, int minEpoch, bool maximize);
 
 Path* edgeBasedGeneticAlgorithm(
         Graph *graph, Node *start, Node *end, int maxLength,
         unordered_map<Node::Edge*, int>& minLengthStart, unordered_map<Node::Edge*, int>& minLengthEnd,
-        PathEdges* shortestPathEdges,
+        Path* shortestPath,
         size_t numProduce, size_t numMaxSelect, int numEpoch, DuplicateEdge duplicateEdge,
         int maxMilliseconds, int minEpoch, bool maximize
         );

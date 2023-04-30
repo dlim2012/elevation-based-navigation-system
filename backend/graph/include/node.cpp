@@ -2,6 +2,7 @@
 #include <math.h>
 #include <unordered_map>
 #include <algorithm>
+#include <iostream>
 
 #include "node.h"
 
@@ -37,15 +38,62 @@ Node::Edge::Edge(long id, Node *u, Node *v,
     this->elevation = elevation;
 }
 
+Node::Edge::~Edge(){
+}
+
+long Node::Edge::getId() const { return this->id; }
 
 int Node::Edge::getLength() { return this->length; };
 
 int Node::Edge::getElevation() { return this->elevation; };
 
+unordered_map<long, Node::Edge *>& Node::getEdges(){
+    return this->edges;
+}
+
+unordered_map<long, Node::Edge *>& Node::getReversedEdges(){
+    return this->reversedEdges;
+}
+
+bool Node::hasEdge(long id) {
+    return this->edges.find(id) != this->edges.end();
+}
+
+bool Node::hasReversedEdge(long id) {
+    return this->reversedEdges.find(id) != this->reversedEdges.end();
+}
+
+void Node::setEdge(long id, Node::Edge* edge){
+    this->edges[id] = edge;
+}
+
+void Node::setReversedEdge(long id, Node::Edge* edge){
+    this->reversedEdges[id] = edge;
+}
+
+unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *Node::getRestrictions(){
+    return this->restrictions;
+}
+
+unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *Node::getReversedRestrictions(){
+    return this->reversedRestrictions;
+}
+
+void Node::setRestrictions(unordered_map<Node::Edge *, unordered_set<Node::Edge *>> * restrictions){
+    this->restrictions = restrictions;
+}
+
+void Node::setReversedRestrictions(unordered_map<Node::Edge *, unordered_set<Node::Edge *>> * reversedRestrictions){
+    this->reversedRestrictions = reversedRestrictions;
+}
+
+Node* Node::Edge::getU() { return this->u; }
+
+Node* Node::Edge::getV() { return this->v; }
+
 int Node::Edge::getLength(Edge *edge) { return edge->getLength(); }
 
 int Node::Edge::getElevation(Edge *edge) { return edge->getElevation(); }
-
 
 Node::Node(long id, double lon, double lat, int elevation) {
     this->id = id;
@@ -64,6 +112,19 @@ Node::Node(long id, double lon, double lat, int elevation, unordered_map<long, E
     this->edges = edges;
     this->restrictions = nullptr;
     this->reversedRestrictions = nullptr;
+}
+
+Node::~Node(){
+    delete this->restrictions;
+    delete this->reversedRestrictions;
+    for (pair<const long, Node::Edge*> pair1: this->edges){
+        pair1.second->getV()->getReversedEdges().erase(pair1.second->getId());
+        delete pair1.second;
+    }
+    for (pair<const long, Node::Edge*> pair1: this->reversedEdges){
+        pair1.second->getU()->getEdges().erase(pair1.second->getId());
+        delete pair1.second;
+    }
 }
 
 Node *Node::cloneWithoutEdges() {
@@ -92,11 +153,27 @@ int distance(double lon1, double lon2, double lat1, double lat2) {
 }
 
 int distance(Node *node1, Node *node2) {
-    return distance(node1->lon, node2->lon, node1->lat, node2->lat);
+    return distance(node1->getLon(), node2->getLon(), node1->getLat(), node2->getLat());
     //    return sqrt(pow(node1->lon - node2->lon, 2) + pow(node1->lat - node2->lat, 2));
 }
 
 int distance(Node *node1, pair<double, double> &p) {
-    return distance(node1->lon, p.first, node1->lat, p.second);
+    return distance(node1->getLon(), p.first, node1->getLat(), p.second);
 //    return sqrt(pow(node1->lon - p.first, 2) + pow(node1->lat - p.second, 2));
+}
+
+long Node::getId(){
+    return this->id;
+}
+
+double Node::getLon() const{
+    return this->lon;
+}
+
+double Node::getLat() const{
+    return this->lat;
+}
+
+int Node::getElevation() const{
+    return this->elevation;
 }

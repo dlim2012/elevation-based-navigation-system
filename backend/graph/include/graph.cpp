@@ -7,6 +7,7 @@
 #include <random>
 #include <algorithm>
 #include <pqxx/pqxx>
+#include <chrono>
 
 #include "graph.h"
 
@@ -32,20 +33,6 @@ Graph::Graph(bool populateEdgesField) {
     this->edgeCount = 0;
 }
 
-Graph::Graph(string& connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig) {
-    this->populateEdgesField = true;
-    connection C(connectionString);
-    addAllNodesFromDB(C, highwayConfig, locationConfig, false);
-    addAllEdgesFromDB(C, highwayConfig, locationConfig, false);
-    addAllRestrictionsFromDB(C, highwayConfig, locationConfig);
-    maxGroup();
-    addAllEdgeGeometriesFromDB(C, highwayConfig, locationConfig);
-    this->ballTree = createBallTree();
-    this->populateEdgesField = false;
-    this->edges.clear();
-    cout << this->nodes.size() << endl;
-}
-
 Graph::Graph(string& connectionString,
       HighwayConfig highwayConfig, LocationConfig locationConfig,
       unordered_map<long, Geometry*>* sharedEdgesGeometries){
@@ -60,7 +47,28 @@ Graph::Graph(string& connectionString,
     this->ballTree = createBallTree();
     this->populateEdgesField = false;
     this->edges.clear();
-    cout << this->nodes.size() << endl;
+}
+
+void deleteBallTree(BallTreeNode* node){
+    if (node->left != nullptr){
+        deleteBallTree(node->left);
+    }
+    if (node->right != nullptr){
+        deleteBallTree(node->right);
+    }
+    delete node->left;
+    delete node->right;
+}
+
+Graph::~Graph(){
+    cout << "delete Graph" << endl;
+    if (this->ballTree != nullptr) {
+        deleteBallTree(this->ballTree);
+    }
+    delete this->ballTree;
+    for (pair<long, Node*> p: nodes){
+        delete p.second;
+    }
 }
 
 //void Graph::saveAllEdgesInCsv() {
@@ -73,7 +81,7 @@ Graph::Graph(string& connectionString,
 //    edgesFile << fixed << setprecision(8) << "index,longitude1,latitude1,longitude2,latitude2" << endl;
 //
 //    int index(0);
-//    for (auto pair1: this->edges) {
+//    for (auto pair1: this->getEdges()) {
 //        vector<pair<double, double>> &v = this->edgeGeometries[pair1.first];
 //        for (int i = 0; i < v.size() - 1; i++) {
 //            edgesFile << index++ << "," << v[i].first << "," << v[i].second << "," << v[i + 1].first << ","
@@ -89,7 +97,7 @@ Node *Graph::addNode(long id, double lon, double lat, int elevation) {
 }
 
 void Graph::addNode(Node *node) {
-    this->nodes[node->id] = node;
+    this->nodes[node->getId()] = node;
 }
 
 
@@ -101,31 +109,30 @@ void Graph::addEdge(long id, Node *u, Node *v, int length, int elevation, direct
 
     Node::Edge *edge1, *edge2;
 
-
     if (direction == bidirectional || direction == oneway) {
-        if (u->edges.find(id) == u->edges.end()){
+        if (!u->hasEdge(id)){
             this->edgeCount++;
         }
         edge1 = new Node::Edge(id, u, v, length, elevation);
-        u->edges[id] = edge1;
-        v->reversedEdges[id] = edge1;
+        u->setEdge(id, edge1);
+        v->setReversedEdge(id, edge1);
     } else {
         edge1 = nullptr;
     }
 
-    if (direction == bidirectional) {
-        if (v->edges.find(id) == v->edges.end()){
+    if (u != v && (direction == bidirectional || direction == onewayReversed)) {
+        if (!v->hasEdge(id)) {
             this->edgeCount++;
         }
         edge2 = new Node::Edge(id, v, u, length, elevation);
-        v->edges[id] = edge2;
-        u->reversedEdges[id] = edge2;
+        v->setEdge(id, edge2);
+        u->setReversedEdge(id, edge2);
     } else {
         edge2 = nullptr;
     }
 
     if (this->populateEdgesField) {
-        if (u->id < v->id) {
+        if (u->getId() < v->getId()) {
             this->edges[id] = {edge1, edge2};
         } else {
             this->edges[id] = {edge2, edge1};
@@ -134,6 +141,8 @@ void Graph::addEdge(long id, Node *u, Node *v, int length, int elevation, direct
 }
 
 int Graph::addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream) {
+
+    auto t0 = chrono::high_resolution_clock::now();
     cout << "Fetching nodes data from DB... ";
     prepare_nodes_query(C, highwayConfig, locationConfig);
     pqxx::work w(C);
@@ -150,13 +159,18 @@ int Graph::addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConf
                     stod(row1[2].c_str()),
                     stoi(row1[3].c_str()));
         }
-        cout << "done (count: " << r.size() << ")" << endl;
+        auto t1 = chrono::high_resolution_clock::now();
+        auto t_s = (double) chrono::duration_cast<chrono::milliseconds>(t1 - t0).count() / 1000;
+        cout << "done (count: " << r.size() << ", " << t_s << " seconds)" << endl;
         return r.size();
     }
 }
 
 int Graph::addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream) {
+
+    auto t0 = chrono::high_resolution_clock::now();
     cout << "Fetching edges data from DB... ";
+
     prepare_edges_query(C, highwayConfig, locationConfig);
     pqxx::work w(C);
     if (stream) {
@@ -199,7 +213,11 @@ int Graph::addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConf
             }
         }
         this->edgeCount = count;
-        cout << "done (count: " << r.size() << " rows, directed edges: " << count << ")" << endl;
+
+        auto t1 = chrono::high_resolution_clock::now();
+        auto t_s = (double) chrono::duration_cast<chrono::milliseconds>(t1 - t0).count() / 1000;
+        cout << "done (count: " << r.size() << ", directed edges: " << count << ", " << t_s << " seconds)" << endl;
+
         return r.size();
     }
 }
@@ -220,20 +238,20 @@ void Graph::addRestriction(unordered_map<Node::Edge *, unordered_set<Node::Edge 
 }
 
 void Graph::addRestrictions(Node::Edge *fromEdge, Node::Edge *toEdge, string &type_enum) {
-    Node *viaNode = fromEdge->v;
+    Node *viaNode = fromEdge->getV();
     // add the restrictions map to 'via' if not exists
-    if (viaNode->restrictions == nullptr) {
-        viaNode->restrictions = new unordered_map<Node::Edge *, unordered_set<Node::Edge *>>();
-        viaNode->reversedRestrictions = new unordered_map<Node::Edge *, unordered_set<Node::Edge *>>();
+    if (viaNode->getRestrictions() == nullptr) {
+        viaNode->setRestrictions(new unordered_map<Node::Edge *, unordered_set<Node::Edge *>>());
+        viaNode->setReversedRestrictions(new unordered_map<Node::Edge *, unordered_set<Node::Edge *>>());
     }
-    unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *restrictions = viaNode->restrictions;
-    unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *reversedRestrictions = viaNode->reversedRestrictions;
+    unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *restrictions = viaNode->getRestrictions();
+    unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *reversedRestrictions = viaNode->getReversedRestrictions();
 
     if (type_enum[1] == 'n') {
         addRestriction(restrictions, fromEdge, toEdge);
         addRestriction(reversedRestrictions, toEdge, fromEdge);
     } else {
-        for (pair<const long, Node::Edge *> &pair1: viaNode->edges) {
+        for (pair<const long, Node::Edge *> &pair1: viaNode->getEdges()) {
             if (pair1.second != toEdge) {
                 addRestriction(restrictions, fromEdge, pair1.second);
                 addRestriction(reversedRestrictions, pair1.second, fromEdge);
@@ -247,7 +265,10 @@ int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig high
     if (highwayConfig == cycling || highwayConfig == hiking || highwayConfig == motorway_without_restrictions){
         return 0;
     }
+
+    auto t0 = chrono::high_resolution_clock::now();
     cout << "Fetching restrictions data from DB... ";
+
     prepare_restrictions_query(C, highwayConfig, locationConfig);
     if (!this->populateEdgesField) {
         throw runtime_error("The populateEdgesField has to be true to add restrictions to edges.");
@@ -278,17 +299,17 @@ int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig high
             if (edgesIt == this->edges.end())
                 continue;
             pair<Node::Edge *, Node::Edge *> edgePair = edgesIt->second;
-            if (edgePair.first != nullptr && edgePair.first->v == via) {
+            if (edgePair.first != nullptr && edgePair.first->getV() == via) {
                 from = edgePair.first;
-            } else if (edgePair.second != nullptr && edgePair.second->v == via) {
+            } else if (edgePair.second != nullptr && edgePair.second->getV() == via) {
                 from = edgePair.second;
             }
             if (from == nullptr)
                 continue;
 
             // find the 'to' edge (skip if not found)
-            auto nodeEdgesIt = via->edges.find(to_id);
-            if (nodeEdgesIt == via->edges.end())
+            auto nodeEdgesIt = via->getEdges().find(to_id);
+            if (nodeEdgesIt == via->getEdges().end())
                 continue;
             to = nodeEdgesIt->second;
 
@@ -306,23 +327,23 @@ int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig high
             // find the 'via' edge and the 'to' edge
             if (p.first == nullptr) {
                 via = p.second;
-                auto nodeEdgesIt = via->v->edges.find(to_id);
-                if (nodeEdgesIt == via->v->edges.end())
+                auto nodeEdgesIt = via->getV()->getEdges().find(to_id);
+                if (nodeEdgesIt == via->getV()->getEdges().end())
                     continue;
                 to = nodeEdgesIt->second;
             } else if (p.second == nullptr) {
                 via = p.first;
-                auto nodeEdgesIt = via->v->edges.find(to_id);
-                if (nodeEdgesIt == via->v->edges.end())
+                auto nodeEdgesIt = via->getV()->getEdges().find(to_id);
+                if (nodeEdgesIt == via->getV()->getEdges().end())
                     continue;
             } else {
-                auto nodeEdgesIt = p.first->v->edges.find(to_id);
-                if (nodeEdgesIt != p.first->v->edges.end()) {
+                auto nodeEdgesIt = p.first->getV()->getEdges().find(to_id);
+                if (nodeEdgesIt != p.first->getV()->getEdges().end()) {
                     to = nodeEdgesIt->second;
                     via = p.first;
                 } else {
-                    nodeEdgesIt = p.second->v->edges.find(to_id);
-                    if (nodeEdgesIt != p.second->v->edges.end()) {
+                    nodeEdgesIt = p.second->getV()->getEdges().find(to_id);
+                    if (nodeEdgesIt != p.second->getV()->getEdges().end()) {
                         to = nodeEdgesIt->second;
                         via = p.second;
                     } else {
@@ -336,9 +357,9 @@ int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig high
             if (edgesIt == this->edges.end())
                 continue;
             p = edgesIt->second;
-            if (p.first != nullptr && p.first->v == via->u) {
+            if (p.first != nullptr && p.first->getV() == via->getU()) {
                 from = p.first;
-            } else if (p.second != nullptr && p.second->v == via->u) {
+            } else if (p.second != nullptr && p.second->getV() == via->getU()) {
                 from = p.second;
             } else
                 continue;
@@ -349,7 +370,10 @@ int Graph::addAllRestrictionsFromDB(pqxx::connection_base &C, HighwayConfig high
         }
 
     }
-    cout << "done (count: " << r.size() << ")" << endl;
+    auto t1 = chrono::high_resolution_clock::now();
+    auto t_s = (double) chrono::duration_cast<chrono::milliseconds>(t1 - t0).count() / 1000;
+    cout << "done (count: " << r.size() << ", " << t_s << " seconds)" << endl;
+
     return r.size();
 }
 
@@ -383,7 +407,7 @@ void Graph::edgeBasedStrongConnectIterative(
     onTarjanStack.insert(edge);
     memo[edge] = {index, index};
     index++;
-    stack.push({edge, nullptr, edge->v->edges.begin()});
+    stack.push({edge, nullptr, edge->getV()->getEdges().begin()});
 
     while (!stack.empty()) {
         Node::Edge *parEdge = stack.top().parEdge;
@@ -396,7 +420,7 @@ void Graph::edgeBasedStrongConnectIterative(
             parMemo.second = min(parMemo.second, memo[childEdge].second);
         }
 
-        while (itCur != parEdge->v->edges.end()) {
+        while (itCur != parEdge->getV()->getEdges().end()) {
             childEdge = (itCur)->second;
 
             if (isRestricted(parEdge, childEdge, false)) {
@@ -412,13 +436,13 @@ void Graph::edgeBasedStrongConnectIterative(
                 parMemo.second = min(parMemo.second, memoIt->second.first);
             itCur++;
         }
-        if (itCur != parEdge->v->edges.end()) {
+        if (itCur != parEdge->getV()->getEdges().end()) {
             tarjanStack.push(childEdge);
             onTarjanStack.insert(childEdge);
             memo[childEdge] = {index, index};
             index++;
             stack.push({parEdge, childEdge, ++itCur});
-            stack.push({childEdge, nullptr, childEdge->v->edges.begin()});
+            stack.push({childEdge, nullptr, childEdge->getV()->getEdges().begin()});
         } else if (parMemo.first == parMemo.second) {
             unordered_map<long, pair<Node::Edge *, Node::Edge *>> edgeGroup;
             unordered_map<long, Node *> nodeGroup;
@@ -428,27 +452,27 @@ void Graph::edgeBasedStrongConnectIterative(
                 tarjanStack.pop();
                 onTarjanStack.erase(edge);
 
-                auto edgePairIt = edgeGroup.find(edge->id);
+                auto edgePairIt = edgeGroup.find(edge->getId());
                 if (edgePairIt == edgeGroup.end()) {
 
-                    if (edge->u->id < edge->v->id) {
-                        edgeGroup[edge->id] = {edge, nullptr};
+                    if (edge->getU()->getId() < edge->getV()->getId()) {
+                        edgeGroup[edge->getId()] = {edge, nullptr};
                     } else {
-                        edgeGroup[edge->id] = {nullptr, edge};
+                        edgeGroup[edge->getId()] = {nullptr, edge};
                     }
                 } else {
-                    if (edge->u->id < edge->v->id) {
+                    if (edge->getU()->getId() < edge->getV()->getId()) {
                         edgePairIt->second.first = edge;
                     } else {
                         edgePairIt->second.second = edge;
                     }
                 }
 
-                if (nodeGroup.find(edge->u->id) == nodeGroup.end()) {
-                    nodeGroup[edge->u->id] = edge->u;
+                if (nodeGroup.find(edge->getU()->getId()) == nodeGroup.end()) {
+                    nodeGroup[edge->getU()->getId()] = edge->getU();
                 }
-                if (nodeGroup.find(edge->v->id) == nodeGroup.end()) {
-                    nodeGroup[edge->v->id] = edge->v;
+                if (nodeGroup.find(edge->getV()->getId()) == nodeGroup.end()) {
+                    nodeGroup[edge->getV()->getId()] = edge->getV();
                 }
 
                 if (edge == parEdge) {
@@ -469,6 +493,7 @@ void Graph::edgeBasedStrongConnectIterative(
 
 
 void Graph::maxGroup() {
+    auto t0 = chrono::high_resolution_clock::now();
     cout << "Extracting the biggest strongly connected components... ";
     int index(0);
     stack<Node::Edge *> tarjanStack;
@@ -486,40 +511,20 @@ void Graph::maxGroup() {
             edgeBasedStrongConnectIterative(p.second.second, memo, index, newEdges, newNodes);
     }
 
-
-    int edgeCount1 = 0;
-    int edgeCount2 = 0;
-    for (pair<const long, Node *> &pair1: newNodes) {
-        Node *node = pair1.second;
-        // remove unused edges
-        for (auto edgeIt = node->edges.begin(); edgeIt != node->edges.end();) {
-            Node::Edge *edge = edgeIt->second;
-            auto nodeEdgesIt = newEdges.find(edge->id);
-            if (nodeEdgesIt == newEdges.end()) {
-                edgeIt = node->edges.erase(edgeIt);
-            } else if (edge != nodeEdgesIt->second.first && edge != nodeEdgesIt->second.second) {
-                edgeIt = node->edges.erase(edgeIt);
-            } else {
-                edgeIt++;
-                edgeCount1++;
-            }
+    for (auto it: this->nodes){
+        Node* node = it.second;
+        if (newNodes.find(it.first) == newNodes.end()){
+            delete node;
         }
-        // remove unused reversed edges
-        for (auto edgeIt = node->reversedEdges.begin(); edgeIt != node->reversedEdges.end();) {
-            Node::Edge *edge = edgeIt->second;
-            auto nodeEdgesIt = newEdges.find(edge->id);
-            if (nodeEdgesIt == newEdges.end()) {
-                edgeIt = node->reversedEdges.erase(edgeIt);
-            } else if (edge != nodeEdgesIt->second.first && edge != nodeEdgesIt->second.second) {
-                edgeIt = node->reversedEdges.erase(edgeIt);
-            } else {
-                edgeIt++;
-                edgeCount2++;
-            }
-        }
-
     }
 
+    int edgeCount = 0;
+    for (pair<const long, Node *> &pair1: newNodes) {
+        Node *node = pair1.second;
+        for (auto edgeIt = node->getEdges().begin(); edgeIt != node->getEdges().end();edgeIt++) {
+            edgeCount++;
+        }
+    }
 
     int countNull(0);
     for (auto it: newEdges) {
@@ -529,16 +534,21 @@ void Graph::maxGroup() {
 
     swap(this->nodes, newNodes);
     swap(this->edges, newEdges);
-    this->edgeCount = edgeCount1;
+    this->edgeCount = edgeCount;
 
+    auto t1 = chrono::high_resolution_clock::now();
+    auto t_s = (double) chrono::duration_cast<chrono::milliseconds>(t1 - t0).count() / 1000;
     cout << "done (node: " << this->nodes.size() << ", edge: "
-         << edgeCount1 << ")" << endl;
+         << edgeCount << ", " << t_s << " seconds)" << endl;
 
 
 }
 
 int Graph::addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig){
+
+    auto t0 = chrono::high_resolution_clock::now();
     cout << "Fetching edge geometries... ";
+
     prepare_edges_geom_query(C, highwayConfig, locationConfig);
     pqxx::work w(C);
     pqxx::result r = w.exec_prepared("edges_geom");
@@ -554,7 +564,10 @@ int Graph::addAllEdgeGeometriesFromDB(pqxx::connection_base &C, HighwayConfig hi
         (*this->edgeGeometries)[id] = new Geometry(u, v, parseLineString(geom_text));
         lineCount += this->edgeGeometries->at(id)->points.size();
     }
-    cout << "done (row count: " << r.size() << ", line count: " << lineCount << ")" << endl;
+
+    auto t1 = chrono::high_resolution_clock::now();
+    auto t_s = (double) chrono::duration_cast<chrono::milliseconds>(t1 - t0).count() / 1000;
+    cout << "done (row count: " << r.size() << ", line count: " << lineCount << ", " << t_s << " seconds)" << endl;
     return r.size();
 }
 
@@ -563,7 +576,7 @@ bool Graph::isRestricted(Node::Edge *p, Node::Edge *c, bool reversed) {
         return false;
     }
     unordered_map<Node::Edge *, unordered_set<Node::Edge *>> *restrictions =
-            reversed ? p->u->reversedRestrictions : p->v->restrictions;
+            reversed ? p->getU()->getReversedRestrictions() : p->getV()->getRestrictions();
 
     if (restrictions != nullptr) {
         auto restrictionsIt = restrictions->find(p);
@@ -577,6 +590,7 @@ bool Graph::isRestricted(Node::Edge *p, Node::Edge *c, bool reversed) {
 }
 
 BallTreeNode *Graph::createBallTree() {
+    auto t0 = chrono::high_resolution_clock::now();
     cout << "Creating ball tree... ";
     vector<Node *> data;
     for (auto it: nodes) {
@@ -587,7 +601,10 @@ BallTreeNode *Graph::createBallTree() {
         return nullptr;
     }
     this->ballTree = createBallTree(data);
-    cout << "done" << endl;
+    auto t1 = chrono::high_resolution_clock::now();
+    auto t_s = (double) chrono::duration_cast<chrono::milliseconds>(t1 - t0).count() / 1000;
+    cout << "done (" << t_s << " seconds)" << endl;
+
     return this->ballTree;
 }
 
@@ -598,24 +615,24 @@ BallTreeNode *Graph::createBallTree(vector<Node *> data) {
     } else {
         double x_mean(0.0), y_mean(0.0), x_spread(0.0), y_spread(0.0);
         for (Node *node: data) {
-            x_mean += node->lon;
-            y_mean += node->lat;
+            x_mean += node->getLon();
+            y_mean += node->getLat();
         }
         x_mean = x_mean / (double) data.size();
         y_mean = y_mean / (double) data.size();
         for (Node *node: data) {
-            x_spread += pow(node->lon - x_mean, 2);
-            y_spread += pow(node->lat - y_mean, 2);
+            x_spread += pow(node->getLon() - x_mean, 2);
+            y_spread += pow(node->getLat() - y_mean, 2);
         }
         int pivotIndex = (int) data.size() / 2;
         Node *pivotNode = data[pivotIndex];
         if (x_spread > y_spread) {
             sort(data.begin(), data.end(), [](const Node *a, Node *b) {
-                return a->lon < b->lon;
+                return a->getLon() < b->getLon();
             });
         } else {
             sort(data.begin(), data.end(), [](const Node *a, Node *b) {
-                return a->lat < b->lat;
+                return a->getLat() < b->getLat();
             });
         }
         root = new BallTreeNode(data[pivotIndex], data.size());
@@ -703,7 +720,7 @@ pair<Node*, Node*> Graph::getTwoNearNodes(int maxDistance){
     int n2 = 100;
     for (int i=1; i<=n || (i <= n2 && (node2 == nullptr || node2 == node)); i++){
         node = this->getRandomNode();
-        pair<double, double> target = {node->lon, node->lat};
+        pair<double, double> target = {node->getLon(), node->getLat()};
         node2 = nearNode(this->ballTree, target, maxDistance);
         if (node2 != nullptr && distance(node, node2) > maxDistance * 2 / 3){
             break;
@@ -712,3 +729,11 @@ pair<Node*, Node*> Graph::getTwoNearNodes(int maxDistance){
     return {node, node2};
 }
 
+
+bool Graph::hasNode(Node* node) {
+    return this->nodes.find(node->getId()) != this->nodes.end();
+}
+
+int Graph::getEdgeCount(){
+    return this->edgeCount;
+}

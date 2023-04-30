@@ -8,32 +8,50 @@ const uint HASHMOD = 134217613; // prime number, HASHMOD * (HASHMULT + 1) < UINT
 
 
 class Path {
-public:
-
+private:
 
     vector<Node::Edge*> edges;
     int length;
     int elevation;
+    bool confirmedlyOptimal;
 
+public:
     Path();
     Path(vector<Node::Edge*>& edges, int length, int elevation);
+    ~Path();
     void addEdge(Node::Edge *edge);
     void revert();
     Node* getStart();
     Node* getEnd();
-    bool empty();
+    vector<Node::Edge*>& getEdges();
+    int getLength();
+    int getElevation();
+    bool isConfirmedOptimal();
+    void setLength(int length);
+    void setElevation(int elevation);
+    void confirmOptimal();
+    bool empty() const;
 };
 
 
 class PathEdges {
 public:
 
-    struct PathEdge {
+    class PathEdge {
+    private:
         Node::Edge *edge;
-        int length;
+        long length;
         int elevation;
-
+        int referCount;
+    public:
         PathEdge(Node::Edge *edge, int length, int elevation);
+        ~PathEdge();
+        Node::Edge* getEdge();
+        int getLength();
+        int getElevation();
+        void increaseReferCount();
+        bool decreaseReferCount(); // returns if refer count = 0
+        PathEdge* clone();
     };
 
 
@@ -49,19 +67,27 @@ public:
         }
     };
 
+private:
     Node* start;
     Node* end;
+
+
     vector<PathEdge *> pathEdges;
     int length; // in centimeters
     int elevation;
+    bool confirmedlyOptimal;
 
-    PathEdges(Node* start);
+public:
+
+    explicit PathEdges(Node* start);
 
     PathEdges(Node* start, vector<Node::Edge *>& edges);
 
     PathEdges(Node* start, vector<PathEdge *> &pathEdges, int index);
 
-    PathEdges(Path* path);
+    explicit PathEdges(Path* path);
+
+    ~PathEdges();
 
     bool empty() const;
 
@@ -71,17 +97,23 @@ public:
 
     int getElevation() const;
 
+    vector<PathEdge *>& getPathEdges();
+
     Node* getStart();
 
     Node* getEnd();
 
     PathEdge* at(size_t index);
     
-    Node::Edge* firstEdge();
+    Node::Edge* getFirstEdge();
 
-    Node::Edge* lastEdge();
+    Node::Edge* getLastEdge();
+
+    bool isConfirmedOptimal();
 
     void addEdge(Node::Edge *edge);
+
+    void confirmOptimal();
 
     PathEdges* cutBefore(int index);
 
@@ -93,30 +125,12 @@ public:
 
 };
 
-// todo: is this supposed to be declared in a header file?
 struct pathEdgesHash{
 public:
-    size_t operator() (const PathEdges* pathEdges) const{
-        size_t hash = 0;
-        for (PathEdges::PathEdge* pathEdge: pathEdges->pathEdges){
-            hash = (hash * HASHMULT + ((int) (pathEdge->edge->v->id % HASHMOD))) % HASHMOD;
-        }
-        return hash;
-    }
+    size_t operator() (PathEdges *pathEdges) const;
 };
 
 struct pathEdgesEqual{
 public:
-    bool operator() (const PathEdges* pathEdges1, const PathEdges* pathEdges2) const {
-        if (pathEdges1->size() != pathEdges2->size()){
-            return false;
-        }
-        size_t size = pathEdges1->size();
-        for (size_t i=0; i<size; i++){
-            if (pathEdges1->pathEdges[i]->edge != pathEdges2->pathEdges[i]->edge){
-                return false;
-            }
-        }
-        return true;
-    }
+    bool operator() (PathEdges *pathEdges1, PathEdges* pathEdges2) const;
 };

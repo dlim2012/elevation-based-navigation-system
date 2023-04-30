@@ -14,7 +14,7 @@ using namespace std;
 typedef chrono::time_point<std::chrono::high_resolution_clock> time_point;
 
 long duration(time_point start, time_point end){
-    return (int) chrono::duration_cast<chrono::microseconds>(end - start).count();
+    return (int) chrono::duration_cast<chrono::milliseconds>(end - start).count();
 }
 
 
@@ -71,11 +71,11 @@ void RequestRateLimiter::repeatCleanRequest(int seconds){
             unordered_map<int, Record*>& recordsPerIp = it->second;
             for (auto it2=recordsPerIp.begin(); it2 != recordsPerIp.end();){
                 Record* record = it2->second;
-                if (record->getInterval() == 0){
+                if (duration(record->getEnd(), now) > EXPIRE_TIME) {
+                    it2 = recordsPerIp.erase(it2);
+                } else if (record->getInterval() == 0){
                     newLockCount--;
                     it2++;
-                } else if (duration(record->getEnd(), now) > EXPIRE_TIME){
-                    it2 = recordsPerIp.erase(it2);
                 } else {
                     it2++;
                 }
@@ -159,5 +159,5 @@ void RequestRateLimiter::releaseLock(const string& ipAddress, int requestId){
     this->lockCount += record->getNumLock();
     this->lock.unlock();
     cout << "lock released (requestId: " << requestId << ", IP address: " << ipAddress << ", num: "  << record->getNumLock() << ") lockCount: " << this->lockCount;
-    cout << " interval: " << (double) record->getInterval() / 1000000 << " seconds" << endl;
+    cout << " interval: " << (double) record->getInterval() / 1000 << " seconds" << endl;
 }

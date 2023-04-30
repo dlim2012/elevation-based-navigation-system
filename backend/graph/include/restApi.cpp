@@ -20,8 +20,8 @@ const int LOCK_COUNT = 16;
 const int MAX_REQUESTS = 4;
 
 const int DEFAULT_NUM_PRODUCE = 100;
-const int DEFAULT_NUM_MAX_SELECT = 25;
-const int DEFAULT_NUM_EPOCH = 1000;
+const int DEFAULT_NUM_MAX_SELECT = 30;
+const int DEFAULT_NUM_EPOCH = 10000;
 const int DEFAULT_MIN_EPOCH = 10;
 
 const string CORS_ALLOW = "http://76.23.247.67";
@@ -46,21 +46,22 @@ Graph* graphTypeToGraph(string graphType){
     throw runtime_error("Invalid graph type");
 }
 
-const int MAXIMUM_MAX_LENGTH_RATIO = 10;
+const int MAXIMUM_MAX_LENGTH_RATIO = 5;
 
 crow::json::wvalue emptyGeoJson(Node* start){
     crow::json::wvalue w;
     w["GeoJSON"]["type"] = "Node";
-    w["GeoJSON"]["coordinates"][0][0] = start->lat;
-    w["GeoJSON"]["coordinates"][0][1] = start->lon;
+    w["GeoJSON"]["coordinates"][0][0] = start->getLat();
+    w["GeoJSON"]["coordinates"][0][1] = start->getLon();
     w["elevation"] = 0;
     w["length"] = 0;  // cm to km
+    w["optimal"] = true;
     return w;
 }
 
 crow::json::wvalue pathToGeoJson(
         Path *path, unordered_map<long, Geometry*> *umap) {
-    vector<Node::Edge *> &edges = path->edges;
+    vector<Node::Edge *> &edges = path->getEdges();
     crow::json::wvalue w;
     w["GeoJSON"]["type"] = "LineString";
 
@@ -70,12 +71,12 @@ crow::json::wvalue pathToGeoJson(
 
     int index = 0;
     Node* start = path->getStart();
-    long nodeId = start->id;
-    w["GeoJSON"]["coordinates"][index][0] = start->lat;
-    w["GeoJSON"]["coordinates"][index][1] = start->lon;
+    long nodeId = start->getId();
+    w["GeoJSON"]["coordinates"][index][0] = start->getLat();
+    w["GeoJSON"]["coordinates"][index][1] = start->getLon();
     index++;
     for (Node::Edge *edge: edges) {
-        Geometry* geom = (*umap)[edge->id];
+        Geometry* geom = (*umap)[edge->getId()];
         if (geom->startId == nodeId){
             for (int i = 1; i < geom->points.size(); i++) {
                 w["GeoJSON"]["coordinates"][index][0] = geom->points[i].second;
@@ -95,8 +96,9 @@ crow::json::wvalue pathToGeoJson(
         }
     }
     // sum of elevation diff to elevation gain
-    w["elevation"] = (path->elevation - path->getStart()->elevation + path->getEnd()->elevation) / 2;
-    w["length"] = (double) path->length / 100000;  // cm to km
+    w["elevation"] = (path->getElevation() - path->getStart()->getElevation() + path->getEnd()->getElevation()) / 2;
+    w["length"] = (double) path->getLength() / 100000;  // cm to km
+    w["optimal"] = path->isConfirmedOptimal();
     return w;
 }
 
@@ -104,16 +106,16 @@ crow::json::wvalue pathToGeoJson(
 crow::json::wvalue jsonFromNode(Node* node){
 
     json::wvalue w;
-    w["id"] = node->id;
-    w["lon"] = node->lon;
-    w["lat"] = node->lat;
-    w["elevation"] = node->elevation;
+    w["id"] = node->getId();
+    w["lon"] = node->getLon();
+    w["lat"] = node->getLat();
+    w["elevation"] = node->getElevation();
 
-    if (node->restrictions != nullptr) {
-        for (pair<const Node::Edge *, unordered_set<Node::Edge *>> pair1: *(node->restrictions)) {
+    if (node->getRestrictions() != nullptr) {
+        for (pair<Node::Edge *const, unordered_set<Node::Edge *>> pair1: *(node->getRestrictions())) {
             int index = 0;
             for (auto it: pair1.second){
-                w["restrictions"][to_string(pair1.first->id)][index++] = it->id;
+                w["restrictions"][to_string(pair1.first->getId())][index++] = it->getId();
             }
         }
     }
@@ -153,7 +155,6 @@ vector<double> readVectorDouble(const json::rvalue& r, string key, double minVal
 void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1, double lat1, double lon2,
                 double lat2, int pathType, int edgeBased, double maxLengthRatio,
                 DuplicateEdge duplicateEdge, int seconds){
-    cout << "searchPath " << pathType << " " << maxLengthRatio << endl;
     json::wvalue w;
     w["nodeId"] = nodeId;
 
@@ -174,6 +175,7 @@ void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1
                         true, &prevEdgeMap, nullptr
                 );
                 path = pathFromPrevEdgeMap(start, end, prevEdgeMap);
+                path->confirmOptimal();
             } else {
                 unordered_map<Node *, Node::Edge *> prevEdgeMap;
                 int curMinWeight = INT_MAX;
@@ -189,15 +191,16 @@ void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1
                 if (pathType == 1){
                     Path *shortestPath = pathFromPrevEdgeMap(start, end, prevEdgeMap);
                     path = geneticAlgorithm(
-                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
+                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, shortestPath,
                             DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
-                            seconds * 900, DEFAULT_MIN_EPOCH, false
+                            seconds * 900, seconds < 0 ? -seconds : DEFAULT_MIN_EPOCH, false
                     );
+                    delete shortestPath;
                 } else {
                     path = geneticAlgorithm(
                             graph, start, end, maxWeight, minWeightStart, minWeightEnd, nullptr,
                             DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
-                            seconds * 900, DEFAULT_MIN_EPOCH, true
+                            seconds * 900, seconds < 0 ? -seconds : DEFAULT_MIN_EPOCH, true
                     );
                 }
             }
@@ -230,10 +233,11 @@ void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1
                 if (pathType == 1){
                     Path *shortestPath = edgeBasedPathFromPrevEdgeMap(lastEdge, prevEdgeMap);
                     path = edgeBasedGeneticAlgorithm(
-                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
+                            graph, start, end, maxWeight, minWeightStart, minWeightEnd, shortestPath,
                             DEFAULT_NUM_PRODUCE, DEFAULT_NUM_MAX_SELECT, DEFAULT_NUM_EPOCH, duplicateEdge,
                             seconds * 900, DEFAULT_MIN_EPOCH, false
                     );
+                    delete shortestPath;
                 } else {
                     path = edgeBasedGeneticAlgorithm(
                             graph, start, end, maxWeight, minWeightStart, minWeightEnd, nullptr,
@@ -243,11 +247,13 @@ void searchPath(promise<json::wvalue>&& p, Graph* graph, int nodeId, double lon1
                 }
             }
         }
-        w["path"] = pathToGeoJson(path, graph->edgeGeometries);
+        w["path"] = pathToGeoJson(path, sharedEdgesGeometries);
     } else {
         w["path"] = emptyGeoJson(start);
     }
     p.set_value(w);
+
+    delete path;
 }
 
 
@@ -261,9 +267,9 @@ void runServer(string& connectionString, int port) {
     cout << "Hiking" << endl;
     main_hiking_graph = new Graph(connectionString, hiking, US_mainland, sharedEdgesGeometries);
 //    cout << endl << "Cycling" << endl;
-//    main_cycling_graph = new Graph(connectionString, cycling_with_restrictions);
-    cout << endl << "Cycling with restrictions" << endl;
-    main_cycling_graph = new Graph(connectionString, cycling_with_restrictions, US_mainland, sharedEdgesGeometries);
+//    main_cycling_graph = new Graph(connectionString, cycling, US_mainland, sharedEdgesGeometries);
+//    cout << endl << "Cycling with restrictions" << endl;
+//    main_cycling_graph = new Graph(connectionString, cycling_with_restrictions, US_mainland, sharedEdgesGeometries);
 
     unordered_map<string, double> recentUsagePerIPAddress;
     double recentUsageTotal = 0.0;
@@ -329,14 +335,14 @@ void runServer(string& connectionString, int port) {
 
                         pair<Node*, Node*> p = graph->getTwoNearNodes(maxDistance);
                         json::wvalue w;
-                        w["lon1"] = p.first->lon;
-                        w["lat1"] = p.first->lat;
+                        w["lon1"] = p.first->getLon();
+                        w["lat1"] = p.first->getLat();
                         if (p.second != nullptr){
-                            w["lon2"] = p.second->lon;
-                            w["lat2"] = p.second->lat;
+                            w["lon2"] = p.second->getLon();
+                            w["lat2"] = p.second->getLat();
                         } else {
-                            w["lon2"] = p.first->lon;
-                            w["lat2"] = p.first->lat;
+                            w["lon2"] = p.first->getLon();
+                            w["lat2"] = p.first->getLat();
                         }
 
 
@@ -586,7 +592,7 @@ void runServer(string& connectionString, int port) {
 //                        unordered_set<Node::Edge*> uset(path->edges.begin(), path->edges.end());
 //                        unordered_set<long> uset2;
 //                        for (Node::Edge* edge: path->edges){
-//                            uset2.insert(edge->id);
+//                            uset2.insert(edge->getId());
 //                        }
 //
 //                        json::wvalue w = pathToGeoJson(path, graph->edgeGeometries);
@@ -647,6 +653,7 @@ void runServer(string& connectionString, int port) {
                                 || maxLengthRatio.size() != nodeId.size()
                                 || edgeBased < 0 || edgeBased > 2
                                 || nodeId.size() > MAX_REQUESTS
+                                || *max_element(maxLengthRatio.begin(), maxLengthRatio.end()) > MAXIMUM_MAX_LENGTH_RATIO
                                 ){
                                 throw runtime_error("");
                             }
@@ -693,7 +700,7 @@ void runServer(string& connectionString, int port) {
             );
 
 
-    thread requestCleanUpThread(&RequestRateLimiter::repeatCleanRequest, requestRateLimiter, 600);
+    thread requestCleanUpThread(&RequestRateLimiter::repeatCleanRequest, requestRateLimiter, 300);
 
     auto _a = app.port(port).multithreaded().run_async();
 

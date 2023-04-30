@@ -18,19 +18,31 @@
 #include "include/query.h"
 #endif
 
-//#include "include/restApi.h"
+#include "include/restApi.h"
 
 using namespace std;
 using namespace pqxx;
 
-void runRandom(Graph* graph){
-    // todo: get negative elevation
-    int n = 100000;
-    int epoch1 = 10;
-    int epoch2 = 100;
+void testForbidDuplicateEdges(Path* path, DuplicateEdge duplicateEdge, bool edgeBased){
+    unordered_set<Node::Edge*> uset(path->getEdges().begin(), path->getEdges().end());
+    unordered_set<long> uset2;
+    for (Node::Edge* edge: path->getEdges()){
+        uset2.insert(edge->getId());
+    }
+    cout << path->getEdges().size() << " " << uset.size() << " " << uset2.size() << endl;
+    if (edgeBased){
+        return;
+    }
+    if (duplicateEdge == minimizeDuplicateDirectedEdges){
+        assert (path->getEdges().size() == uset.size());
+    } else if (duplicateEdge == minimizeDuplicateUndirectedEdges){
+        assert (path->getEdges().size() == uset.size());
+        assert (path->getEdges().size() == uset2.size());
+    }
+}
 
-    pair<Node*, Node*> p = graph->getTwoNearNodes(100000);
-    cout << p.first->id << " " << p.second->id << " " << endl;
+void testRandomRun(Graph* graph, DuplicateEdge duplicateEdge, int n, vector<int> num_epochs){
+
 
 //    long start_id(10059067058), end_id(6302552417);
     Node *start(graph->getRandomNode()), *end(graph->getRandomNode());
@@ -41,36 +53,36 @@ void runRandom(Graph* graph){
         start = graph->getRandomNode();
         end = graph->getRandomNode();
 
-        cout << "[" << i << "] " << start->id << " " << end->id << endl;
+
+
+        cout << "[" << i << "] " << start->getId() << " " << end->getId() << endl;
         auto t0 = chrono::high_resolution_clock::now();
         auto t1 = chrono::high_resolution_clock::now();
 
+        int curMinWeight = INT_MAX;
+        int maxWeight;
 
-        cout << endl;
-//
         t0 = chrono::high_resolution_clock::now();
         unordered_map<Node *, Node::Edge *> prevEdgeMap;
-        int curMinWeight = INT_MAX;
         unordered_map<Node *, int> minWeightEnd = dijkstraAlgorithm(
                 graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
                 true, &prevEdgeMap, nullptr
         );
         Path *shortestPath = pathFromPrevEdgeMap(start, end, prevEdgeMap);
         t1 = chrono::high_resolution_clock::now();
-        auto t_dl2 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-        cout << "(shortest Path: length)    length: " << shortestPath->length
-             << " elevation: " << shortestPath->elevation
-             << " (time: " << t_dl2 << ")" << endl;
-
+        auto t_s = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+        cout << "(shortest Path: length)    length: " << shortestPath->getLength()
+             << " elevation: " << shortestPath->getElevation()
+             << " (time: " << t_s << ")" << endl;
+        assert (start == end ? shortestPath->getLength() == 0: shortestPath->getLength() > 0);
 
         unordered_map<Node*, int> minWeightStart = dijkstraAlgorithm(
                 graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
                 false, nullptr, nullptr
         );
 
-        int maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
+        maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
 
-        // for reference
         unordered_set<Node*> validNodes;
         for (pair<Node *const, int> &pair1: minWeightEnd) {
             auto it = minWeightStart.find(pair1.first);
@@ -81,76 +93,51 @@ void runRandom(Graph* graph){
             validNodes.insert(pair1.first);
         }
         Path* path = dijkstraAlgorithm(graph, start, end, Node::Edge::getElevation, &validNodes);
-        cout << "(possibly optimal)    length: " << path->length
-             << " elevation: " << path->elevation << endl;
+        cout << "(possibly optimal)    length: " << path->getLength()
+             << " elevation: " << path->getElevation() << endl;
+        delete path;
 
 
-        for (int i=0; i<1; i++) {
-            cout << "--------------------------------------------------" << endl;
+        for (int num_epoch: num_epochs){
             t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath4 = geneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
-                    100, 25, epoch1, unallowDuplicateUndirectedEdges,
+            Path *elenaPath_nM = geneticAlgorithm(
+                    graph, start, end, maxWeight, minWeightStart, minWeightEnd, shortestPath,
+                    100, 25, num_epoch, duplicateEdge,
                     INT_MAX, 1000, true
             );
             t1 = chrono::high_resolution_clock::now();
-            auto t_n4 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_nM)               length: " << elenaPath4->length
-                 << " elevation: " << elenaPath4->elevation
-                 << " (time: " << t_n4 << ")" << endl;
+            auto t_nM = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+            cout << "(elena path_nM)               length: " << elenaPath_nM->getLength()
+                 << " elevation: " << elenaPath_nM->getElevation()
+                 << " (time: " << t_nM << ")" << endl;
+
+
+            assert (elenaPath_nM->getLength() >= shortestPath->getLength());
+            assert (elenaPath_nM->getLength() < maxWeight);
+            assert (elenaPath_nM->getElevation() >= shortestPath->getElevation());
+            testForbidDuplicateEdges(elenaPath_nM, duplicateEdge, false);
+            delete elenaPath_nM;
 
             t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath41 = geneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
-                    100, 25, epoch2, unallowDuplicateUndirectedEdges,
-                    INT_MAX, 1000, true
-            );
-            t1 = chrono::high_resolution_clock::now();
-            auto t_n41 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_nM)               length: " << elenaPath41->length
-                 << " elevation: " << elenaPath41->elevation
-                 << " (time: " << t_n41 << ")" << endl;
-
-
-            t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath42 = geneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
-                    100, 25, epoch1, unallowDuplicateUndirectedEdges,
+            Path *elenaPath_nm = geneticAlgorithm(
+                    graph, start, end, maxWeight, minWeightStart, minWeightEnd, shortestPath,
+                    100, 25, num_epoch, duplicateEdge,
                     INT_MAX, 1000, false
             );
             t1 = chrono::high_resolution_clock::now();
-            auto t_n42 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_nm)               length: " << elenaPath42->length
-                 << " elevation: " << elenaPath42->elevation
-                 << " (time: " << t_n42 << ")" << endl;
+            auto t_nm = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+            cout << "(elena path_nm)               length: " << elenaPath_nm->getLength()
+                 << " elevation: " << elenaPath_nm->getElevation()
+                 << " (time: " << t_nm << ")" << endl;
 
-
-
-            t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath43 = geneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStart, minWeightEnd, new PathEdges(shortestPath),
-                    100, 25, epoch2, unallowDuplicateUndirectedEdges,
-                    INT_MAX, 1000, false
-            );
-            t1 = chrono::high_resolution_clock::now();
-            auto t_n43 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_nm)               length: " << elenaPath43->length
-                 << " elevation: " << elenaPath43->elevation
-                 << " (time: " << t_n43 << ")" << endl;
-
-
-//            //
-//            t0 = chrono::high_resolution_clock::now();
-//            Path *elenaPath5 = elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
-//                    graph, start, end, 2.0, 100, 30, 10, unallowDuplicateUndirectedEdges,
-//                    INT_MAX, 10
-//            )->toPath();
-//            t1 = chrono::high_resolution_clock::now();
-//            auto t_e5 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-//            cout << "(elena path_eM)               length: " << elenaPath5->length
-//                 << " elevation: " << elenaPath5->elevation
-//                 << " (time: " << t_e5 << ")" << endl;
+            assert (elenaPath_nm->getLength() >= shortestPath->getLength());
+            assert (elenaPath_nm->getLength() < maxWeight);
+            assert (elenaPath_nm->getElevation() <= shortestPath->getElevation());
+            assert (elenaPath_nm->getElevation() >= 0);
+            testForbidDuplicateEdges(elenaPath_nm, duplicateEdge, false);
+            delete elenaPath_nm;
         }
+        delete shortestPath;
 
         t0 = chrono::high_resolution_clock::now();
         Node::Edge* lastEdge = nullptr;
@@ -162,104 +149,64 @@ void runRandom(Graph* graph){
         );
         Path* shortestPathE = edgeBasedPathFromPrevEdgeMap(lastEdge, prevEdgeMapE);
         t1 = chrono::high_resolution_clock::now();
-        auto t_dle2 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-        cout << "(shortest path (edge): length)    length: " << shortestPathE->length
-             << " elevation: " << shortestPathE->elevation
-             << " (time: " << t_dle2 << ")" << endl;
+        auto t_sE = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+        cout << "(shortest path (edge): length)    length: " << shortestPathE->getLength()
+             << " elevation: " << shortestPathE->getElevation()
+             << " (time: " << t_sE << ")" << endl;
+        assert (start == end ? shortestPathE->getLength() == 0: shortestPathE->getLength() > 0);
 
+        maxWeight = getMaxWeight(curMinWeight, maxLengthRatio);
 
         unordered_map<Node::Edge*, int> minWeightStartE = edgeBasedDijkstraAlgorithm(
                 graph, start, end, curMinWeight, maxLengthRatio, Node::Edge::getLength,
                 false, nullptr, lastEdge, nullptr
         );
 
-
-        for (int i=0; i<1; i++) {
-            cout << "--------------------------------------------------" << endl;
+        for (int num_epoch: num_epochs){
             t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath4 = edgeBasedGeneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStartE, minWeightEndE, new PathEdges(shortestPath),
-                    100, 25, epoch1, unallowDuplicateUndirectedEdges,
+            Path *elenaPath_eM = edgeBasedGeneticAlgorithm(
+                    graph, start, end, maxWeight, minWeightStartE, minWeightEndE, shortestPathE,
+                    100, 25, num_epoch, duplicateEdge,
                     INT_MAX, 1000, true
             );
             t1 = chrono::high_resolution_clock::now();
-            auto t_e4 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_eM)               length: " << elenaPath4->length
-                 << " elevation: " << elenaPath4->elevation
-                 << " (time: " << t_e4 << ")" << endl;
+            auto t_eM = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+            cout << "(elena path_eM)               length: " << elenaPath_eM->getLength()
+                 << " elevation: " << elenaPath_eM->getElevation()
+                 << " (time: " << t_eM << ")" << endl;
+
+            assert (elenaPath_eM->getLength() >= shortestPathE->getLength());
+            assert (elenaPath_eM->getLength() < maxWeight);
+            assert (elenaPath_eM->getElevation() >= shortestPathE->getElevation());
+            testForbidDuplicateEdges(elenaPath_eM, duplicateEdge, true);
+            delete elenaPath_eM;
 
             t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath41 = edgeBasedGeneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStartE, minWeightEndE, new PathEdges(shortestPath),
-                    100, 25, epoch2, unallowDuplicateUndirectedEdges,
-                    INT_MAX, 1000, true
-            );
-            t1 = chrono::high_resolution_clock::now();
-            auto t_e41 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_eM)               length: " << elenaPath41->length
-                 << " elevation: " << elenaPath41->elevation
-                 << " (time: " << t_e41 << ")" << endl;
-
-            t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath42 = edgeBasedGeneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStartE, minWeightEndE, new PathEdges(shortestPath),
-                    100, 25, epoch1, unallowDuplicateUndirectedEdges,
+            Path *elenaPath_em = edgeBasedGeneticAlgorithm(
+                    graph, start, end, maxWeight, minWeightStartE, minWeightEndE, shortestPathE,
+                    100, 25, num_epoch, duplicateEdge,
                     INT_MAX, 1000, false
             );
             t1 = chrono::high_resolution_clock::now();
-            auto t_e42 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_em)               length: " << elenaPath42->length
-                 << " elevation: " << elenaPath42->elevation
-                 << " (time: " << t_e42 << ")" << endl;
+            auto t_em = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
+            cout << "(elena path_em)               length: " << elenaPath_em->getLength()
+                 << " elevation: " << elenaPath_em->getElevation()
+                 << " (time: " << t_em << ")" << endl;
 
-            t0 = chrono::high_resolution_clock::now();
-            Path *elenaPath43 = edgeBasedGeneticAlgorithm(
-                    graph, start, end, maxWeight, minWeightStartE, minWeightEndE, new PathEdges(shortestPath),
-                    100, 25, epoch2, unallowDuplicateUndirectedEdges,
-                    INT_MAX, 1000, false
-            );
-            t1 = chrono::high_resolution_clock::now();
-            auto t_e43 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-            cout << "(elena path_em)               length: " << elenaPath43->length
-                 << " elevation: " << elenaPath43->elevation
-                 << " (time: " << t_e43 << ")" << endl;
+            assert (elenaPath_em->getLength() >= shortestPathE->getLength());
+            assert (elenaPath_em->getLength() < maxWeight);
+            assert (elenaPath_em->getElevation() <= shortestPathE->getElevation());
+            assert (elenaPath_em->getElevation() >= 0);
+            testForbidDuplicateEdges(elenaPath_em, duplicateEdge, true);
+            delete elenaPath_em;
 
-
-//            //
-//            t0 = chrono::high_resolution_clock::now();
-//            Path *elenaPath5 = elenaPathSearchMaxUsingEdgeBasedGeneticAlgorithm(
-//                    graph, start, end, 2.0, 100, 30, 10, unallowDuplicateUndirectedEdges,
-//                    INT_MAX, 10
-//            )->toPath();
-//            t1 = chrono::high_resolution_clock::now();
-//            auto t_e5 = (double) chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / 1000000;
-//            cout << "(elena path_eM)               length: " << elenaPath5->length
-//                 << " elevation: " << elenaPath5->elevation
-//                 << " (time: " << t_e5 << ")" << endl;
         }
-//        Path* path = elenaPath4;
-//        unordered_set<Node::Edge*> uset(path->edges.begin(), path->edges.end());
-//        unordered_set<long> uset2;
-//        for (Node::Edge* edge: path->edges){
-//            uset2.insert(edge->id);
-//        }
-//        cout << path->edges.size() << " " << uset2.size() << " " << uset.size() << endl;
+        delete shortestPathE;
     }
 }
 
-//void runUsingLocalMap(string map_name, bool preprocessed){
-//    //
-//
-////    auto* graph = new Graph("maps/test", false);
-////    auto* graph = new Graph("maps/Helsinki", false);
-////    auto* graph = new Graph("maps/test.maxGroup", true);
-////    auto* graph = new Graph("maps/Helsinki.maxGroup", true);
-//
-//    auto* graph = new Graph(map_name, preprocessed, true);
-//    runRandom(graph);
-//}
 
-void runUsingDBMap(string connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig){
+void test(string connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig){
 
     Graph* graph = new Graph(true);
     pqxx::connection C(connectionString);
@@ -268,11 +215,19 @@ void runUsingDBMap(string connectionString, HighwayConfig highwayConfig, Locatio
     graph->maxGroup();
     graph->addAllRestrictionsFromDB(C, highwayConfig, locationConfig);
     graph->createBallTree();
-    runRandom(graph);
+
+    pair<Node*, Node*> p = graph->getTwoNearNodes(100000);
+
+    int n = 1;
+    vector<int> num_epochs = {10};
+    testRandomRun(graph, minimizeDuplicateUndirectedEdges, n, num_epochs);
+    testRandomRun(graph, minimizeDuplicateDirectedEdges, n, num_epochs);
+    testRandomRun(graph, ignoreDuplicateEdges, n, num_epochs);
+
+    delete graph;
 }
 
 int main(int argc, char *argv[]){
-//    runUsingLocalMap("maps/test", false);
     if (argc < 3){
         cout << "Argument missing." << endl;
         return 1;
@@ -282,40 +237,51 @@ int main(int argc, char *argv[]){
 
     string connectionString = "dbname = " + dbname + " user = postgres password = postgres "
                                                      "hostaddr = 192.168.1.20 port = 5432";
-//
+
     cout << connectionString << endl;
-    runServer(connectionString, port);
-
-    if (argc < 4){
-        cout << "Argument missing." << endl;
-        return 1;
-    }
-
-    string configName = argv[3];
-    HighwayConfig mapConfig;
-    if (configName == "all") {
-        mapConfig = all_highways;
-    } else if (configName == "motorway"){
-        mapConfig = motorway;
-    } else if (configName == "trunk"){
-        mapConfig = trunk;
-    } else if (configName == "primary"){
-        mapConfig = primary;
-    } else if (configName == "secondary"){
-        mapConfig = secondary;
-    } else if (configName == "tertiary"){
-        mapConfig = tertiary;
-    } else if (configName == "local") {
-        mapConfig = local;
-    } else if (configName == "cycling") {
-        mapConfig = cycling;
-    } else if (configName == "hiking") {
-        mapConfig = hiking;
+    Graph* graph;
+    if (port >= 0){
+        runServer(connectionString, port);
     } else {
-        cout << "invalid configuration name: " << configName << endl;
-        return 1;
-    }
+        if (argc < 4){
+            cout << "Argument missing." << endl;
+            return 1;
+        }
 
-    runUsingDBMap(connectionString, mapConfig, US_mainland);
+        string configName = argv[3];
+        HighwayConfig highwayConfig;
+        LocationConfig locationConfig = US_mainland;
+        if (configName == "all") {
+            highwayConfig = all_highways;
+        } else if (configName == "motorway"){
+            highwayConfig = motorway;
+        } else if (configName == "trunk"){
+            highwayConfig = trunk;
+        } else if (configName == "primary"){
+            highwayConfig = primary;
+        } else if (configName == "secondary"){
+            highwayConfig = secondary;
+        } else if (configName == "tertiary"){
+            highwayConfig = tertiary;
+        } else if (configName == "local") {
+            highwayConfig = local;
+        } else if (configName == "cycling") {
+            highwayConfig = cycling;
+        } else if (configName == "hiking") {
+            highwayConfig = hiking;
+        } else {
+            cout << "invalid configuration name: " << configName << endl;
+            return 1;
+        }
+//        graph = new Graph(true);
+//        pqxx::connection C(connectionString);
+//        graph->addAllNodesFromDB(C, highwayConfig, locationConfig, false);
+//        graph->addAllEdgesFromDB(C, highwayConfig, locationConfig, false);
+//        graph->maxGroup();
+//        graph->addAllRestrictionsFromDB(C, highwayConfig, locationConfig);
+//        graph->createBallTree();
+        test(connectionString, highwayConfig, US_mainland);
+
+    }
     return 0;
 }

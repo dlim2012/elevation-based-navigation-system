@@ -43,20 +43,13 @@ struct Geometry {
 
 class Graph {
 
-public:
-    // todo some fields can be private
-    string version;
+private:
     unordered_map<long, Node *> nodes;
     BallTreeNode *ballTree = nullptr;
-    default_random_engine rng;
-    string nodesCsvHeader;
-    string edgesCsvHeader;
     unordered_map<long, pair<Node::Edge *, Node::Edge *>> edges; // first edge: u->id < v->id
     int edgeCount;
     bool populateEdgesField;
     unordered_map<long, Geometry*> *edgeGeometries;
-
-private:
 
     // add restrictions
     void addRestriction(
@@ -72,16 +65,16 @@ public:
 
     // initialize
     Graph(bool populateEdgesField);
-    Graph(string& connectionString, HighwayConfig highwayConfig, LocationConfig locationConfig);
     Graph(string& connectionString,
           HighwayConfig highwayConfig, LocationConfig locationConfig,
           unordered_map<long, Geometry*>* sharedEdgesGeometries);
-    // todo: make graph from csv
+    ~Graph();
 
     // add to graph
     Node *addNode(long id, double lon, double lat, int elevation);
     void addNode(Node *node);
     void addEdge(long id, Node *u, Node *v, int length, int elevation, direction direction);
+
 
     int addAllNodesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream);
     int addAllEdgesFromDB(pqxx::connection_base &C, HighwayConfig highwayConfig, LocationConfig locationConfig, bool stream);
@@ -112,6 +105,9 @@ public:
     pair<Node*, Node*> getTwoNearNodes(int maxDistance);
     static bool isRestricted(Node::Edge *p, Node::Edge *c, bool reversed);
 
+
+    bool hasNode(Node* node);
+    int getEdgeCount();
 
 };
 

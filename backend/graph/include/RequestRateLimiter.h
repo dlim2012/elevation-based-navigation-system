@@ -8,26 +8,26 @@ using namespace std;
 
 //const int MEASURE_TIME = 120000; // 2 minutes;
 //const int ALLOWED_TIME = (int) (MEASURE_TIME * 3.0);
-const int NUM_TIME_CONSTRAINTS = 4;
+const int NUM_TIME_CONSTRAINTS = 0;
 
 const long MEASURE_TIME [NUM_TIME_CONSTRAINTS] {
-        3000000, // 3 seconds
-        10000000, // 10 seconds
-        30000000, // 30 seconds
-        60000000, // 60 seconds
+//        3000000, // 3 seconds
+//        10000000, // 10 seconds
+//        30000000, // 30 seconds
+//        60000000, // 60 seconds
 //        120000000 // 120 seconds,
 //        3600000000 // 1 hour
 };
 
 const long ALLOWED_TIME [NUM_TIME_CONSTRAINTS] {
-    3000000 * 4,
-    10000000 * 3,
-    30000000 * 5 / 2,
-    60000000 * 2,
-//    120000000 * 2
+//    3000000 * 4,
+//    10000000 * 3,
+//    30000000 * 5 / 2,
+//    60000000 * 2,
+//    120000000 * 9 / 5
 };
 
-const int EXPIRE_TIME = MEASURE_TIME[NUM_TIME_CONSTRAINTS-1]; // 4 minutes
+const int EXPIRE_TIME = NUM_TIME_CONSTRAINTS > 0 ? MEASURE_TIME[NUM_TIME_CONSTRAINTS-1] : 0;
 
 typedef chrono::time_point<std::chrono::high_resolution_clock> time_point;
 
