@@ -1,7 +1,7 @@
 # Elevation based Navigation System (EleNa)
 Navigation systems optimize for the shortest or fastest route. However, they do not consider elevation gain. Let’s say you are hiking or biking from one location to another. You may want to literally go the extra mile if that saves you a couple thousand feet in elevation gain. Likewise, you may want to maximize elevation gain if you are looking for an intense yet time-constrained workout.
 
-This repository implements a navigation system that maximizes or minimizes elevation gain within x% of the shortest path.
+This repository introduces a navigation system that maximizes or minimizes elevation gain within x% of the shortest path.
 
 ![Alt text](samples/screenshots/philadelphia-1.3.png)
 <a href="https://github.com/dlim2012/elevation-based-navigation-system/tree/main/samples">(More screenshots)</a>
