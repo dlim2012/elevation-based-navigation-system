@@ -3,7 +3,7 @@ Navigation systems optimize for the shortest or fastest route. However, they do 
 
 This repository introduces a navigation system that maximizes or minimizes elevation gain within x% of the shortest path.
 
-![Alt text](samples/screenshots/philadelphia-1.3.png)
+![Alt text](samples/screenshots/us-mainland-4.0.png)
 <a href="https://github.com/dlim2012/elevation-based-navigation-system/tree/main/samples">(More screenshots)</a>
 
 ## Used Sources
